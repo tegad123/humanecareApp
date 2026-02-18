@@ -27,6 +27,16 @@ export class UsersController {
   @Get('me')
   getMe(@CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
+    if (authUser.entityType === 'clinician') {
+      return {
+        id: authUser.id,
+        role: 'clinician',
+        email: authUser.email,
+        entityType: 'clinician',
+        clinicianId: authUser.clinicianId,
+        organizationId: authUser.organizationId,
+      };
+    }
     return this.usersService.findMe(authUser.id);
   }
 

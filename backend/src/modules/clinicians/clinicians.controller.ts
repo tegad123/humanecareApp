@@ -15,7 +15,7 @@ import { ChecklistItemsService } from '../checklist-items/checklist-items.servic
 import { CreateClinicianDto } from './dto/create-clinician.dto.js';
 import { UpdateClinicianDto } from './dto/update-clinician.dto.js';
 import { SetOverrideDto } from './dto/set-override.dto.js';
-import { Roles, CurrentUser } from '../../auth/decorators/index.js';
+import { Roles, CurrentUser, Public } from '../../auth/decorators/index.js';
 import type { AuthenticatedUser } from '../../common/interfaces.js';
 import { ClinicianStatus } from '../../../generated/prisma/client.js';
 
@@ -76,6 +76,28 @@ export class CliniciansController {
       limit: limit ? parseInt(limit, 10) : undefined,
     });
   }
+
+  // ── Public Invite Endpoints ──────────────────────────────────
+
+  @Get('invite/:token/validate')
+  @Public()
+  validateInvite(@Param('token') token: string) {
+    return this.cliniciansService.validateInviteToken(token);
+  }
+
+  @Post('invite/:token/accept')
+  @Public()
+  acceptInvite(
+    @Param('token') token: string,
+    @Body('clerkUserId') clerkUserId: string,
+  ) {
+    if (!clerkUserId) {
+      throw new BadRequestException('clerkUserId is required');
+    }
+    return this.cliniciansService.linkClerkUser(token, clerkUserId);
+  }
+
+  // ── Authenticated Endpoints ─────────────────────────────────
 
   @Get()
   findAll(
@@ -182,5 +204,11 @@ export class CliniciansController {
     @CurrentUser() user: any,
   ) {
     return this.cliniciansService.addNote(id, content, user as AuthenticatedUser);
+  }
+
+  @Post(':id/resend-invite')
+  @Roles('super_admin', 'admin', 'recruiter')
+  resendInvite(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.cliniciansService.resendInvite(id, user as AuthenticatedUser);
   }
 }

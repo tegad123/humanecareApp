@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Resend } from 'resend';
 
 export interface EmailPayload {
   to: string;
@@ -9,28 +10,27 @@ export interface EmailPayload {
 }
 
 /**
- * Email service with console.log fallback in development.
- * In production, sends via SendGrid.
+ * Email service powered by Resend.
+ * In development without an API key, logs to console.
  */
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private readonly sendgridApiKey: string | undefined;
+  private readonly resend: Resend | null;
   private readonly fromEmail: string;
-  private readonly isProduction: boolean;
 
   constructor(private config: ConfigService) {
-    this.sendgridApiKey = this.config.get<string>('SENDGRID_API_KEY');
+    const apiKey = this.config.get<string>('RESEND_API_KEY');
+    this.resend = apiKey ? new Resend(apiKey) : null;
     this.fromEmail =
-      this.config.get<string>('EMAIL_FROM') || 'noreply@humanecare.app';
-    this.isProduction = this.config.get<string>('NODE_ENV') === 'production';
+      this.config.get<string>('EMAIL_FROM') || 'onboarding@resend.dev';
   }
 
   /**
-   * Send an email. In dev, logs to console. In prod, uses SendGrid HTTP API.
+   * Send an email. Falls back to console.log when no Resend API key is set.
    */
   async send(payload: EmailPayload): Promise<void> {
-    if (!this.isProduction || !this.sendgridApiKey) {
+    if (!this.resend) {
       this.logger.log(`[DEV EMAIL] To: ${payload.to}`);
       this.logger.log(`[DEV EMAIL] Subject: ${payload.subject}`);
       this.logger.log(`[DEV EMAIL] Body: ${payload.text}`);
@@ -38,30 +38,16 @@ export class EmailService {
     }
 
     try {
-      const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.sendgridApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          personalizations: [{ to: [{ email: payload.to }] }],
-          from: { email: this.fromEmail },
-          subject: payload.subject,
-          content: [
-            { type: 'text/plain', value: payload.text },
-            ...(payload.html
-              ? [{ type: 'text/html', value: payload.html }]
-              : []),
-          ],
-        }),
+      const { error } = await this.resend.emails.send({
+        from: this.fromEmail,
+        to: payload.to,
+        subject: payload.subject,
+        text: payload.text,
+        html: payload.html,
       });
 
-      if (!response.ok) {
-        const errorBody = await response.text();
-        this.logger.error(
-          `SendGrid error (${response.status}): ${errorBody}`,
-        );
+      if (error) {
+        this.logger.error(`Resend error: ${JSON.stringify(error)}`);
       } else {
         this.logger.log(`Email sent to ${payload.to}: ${payload.subject}`);
       }
@@ -99,10 +85,10 @@ export class EmailService {
         ? `Your ${itemLabel} has expired as of ${expiresAt.toLocaleDateString()}.`
         : `Your ${itemLabel} will expire on ${expiresAt.toLocaleDateString()} (${daysUntilExpiry} day${daysUntilExpiry === 1 ? '' : 's'} from now).`,
       '',
-      'Please log in to your HumaneCare portal to upload the renewed document.',
+      'Please log in to your Credentis portal to upload the renewed document.',
       '',
       'Thank you,',
-      'HumaneCare Team',
+      'Credentis Team',
     ].join('\n');
 
     await this.send({
@@ -110,6 +96,50 @@ export class EmailService {
       subject,
       text,
     });
+  }
+
+  /**
+   * Send a clinician invite email with a link to accept and sign up.
+   */
+  async sendClinicianInvite(
+    clinicianEmail: string,
+    clinicianName: string,
+    organizationName: string,
+    inviteUrl: string,
+  ): Promise<void> {
+    const subject = `You've been invited to join ${organizationName} on Credentis`;
+
+    const text = [
+      `Hi ${clinicianName},`,
+      '',
+      `${organizationName} has invited you to complete your onboarding on Credentis.`,
+      '',
+      `Click the link below to get started:`,
+      inviteUrl,
+      '',
+      'This invite link will expire in 7 days.',
+      '',
+      'Thank you,',
+      'Credentis Team',
+    ].join('\n');
+
+    const html = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1e293b;">Welcome to Credentis</h2>
+        <p>Hi ${clinicianName},</p>
+        <p><strong>${organizationName}</strong> has invited you to complete your onboarding on Credentis.</p>
+        <p style="margin: 24px 0;">
+          <a href="${inviteUrl}"
+             style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+            Accept Invite &amp; Get Started
+          </a>
+        </p>
+        <p style="color: #64748b; font-size: 14px;">This invite link will expire in 7 days.</p>
+        <p style="color: #64748b; font-size: 14px;">Thank you,<br/>Credentis Team</p>
+      </div>
+    `;
+
+    await this.send({ to: clinicianEmail, subject, text, html });
   }
 
   /**
@@ -133,9 +163,9 @@ export class EmailService {
         ? `${clinicianName}'s ${itemLabel} has expired and their status may need attention.`
         : `${clinicianName}'s ${itemLabel} will expire in ${daysUntilExpiry} day${daysUntilExpiry === 1 ? '' : 's'}.`,
       '',
-      'Please review in the HumaneCare admin dashboard.',
+      'Please review in the Credentis admin dashboard.',
       '',
-      '- HumaneCare System',
+      '- Credentis System',
     ].join('\n');
 
     await this.send({

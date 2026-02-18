@@ -6,6 +6,8 @@ export interface AuthenticatedUser {
   role: Role;
   email: string;
   clerkUserId: string;
+  entityType: 'user' | 'clinician';
+  clinicianId?: string;
 }
 
 export interface RequestWithUser extends Request {

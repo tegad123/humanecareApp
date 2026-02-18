@@ -1,20 +1,14 @@
-import { auth } from '@clerk/nextjs/server';
-import { ApiError } from './api-client';
-
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 /**
- * Server-side API fetch helper.
- * Use in Server Components, Route Handlers, and Server Actions.
- * Automatically attaches the Clerk JWT token.
+ * Client-side API fetch helper.
+ * Use in Client Components with useAuth() token.
  */
-export async function apiFetch<T = any>(
+export async function clientApiFetch<T = any>(
   path: string,
+  token: string | null,
   options: RequestInit = {},
 ): Promise<T> {
-  const { getToken } = await auth();
-  const token = await getToken();
-
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
@@ -33,4 +27,13 @@ export async function apiFetch<T = any>(
   return res.json();
 }
 
-export { clientApiFetch, ApiError } from './api-client';
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    public body?: any,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}

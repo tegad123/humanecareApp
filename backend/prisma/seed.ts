@@ -41,16 +41,6 @@ function baseIdentityItems(startOrder: number): ItemDef[] {
       sortOrder: startOrder,
     },
     {
-      label: 'Social Security Card',
-      section: SECTIONS.IDENTITY,
-      type: 'file_upload',
-      required: true,
-      blocking: true,
-      adminOnly: false,
-      hasExpiration: false,
-      sortOrder: startOrder + 1,
-    },
-    {
       label: 'Professional Headshot Photo',
       section: SECTIONS.IDENTITY,
       type: 'file_upload',
@@ -58,7 +48,7 @@ function baseIdentityItems(startOrder: number): ItemDef[] {
       blocking: false,
       adminOnly: false,
       hasExpiration: false,
-      sortOrder: startOrder + 2,
+      sortOrder: startOrder + 1,
     },
   ];
 }
@@ -376,8 +366,8 @@ function oasisCompetency(): ItemDef {
 function buildTemplateItems(licenseItems: ItemDef[], includeOasis: boolean): ItemDef[] {
   const items: ItemDef[] = [
     ...baseIdentityItems(1),
-    npiItem(4),
-    coverageItem(5),
+    npiItem(3),
+    coverageItem(4),
     ...licenseItems,
     ...baseClinicalItems(20),
     ...baseHrPayItems(40),
@@ -446,8 +436,8 @@ const templates: TemplateDef[] = [
     description: 'Onboarding checklist for pediatric therapy contractors in Texas (PT/OT/SLP).',
     items: [
       ...baseIdentityItems(1),
-      npiItem(4),
-      coverageItem(5),
+      npiItem(3),
+      coverageItem(4),
       {
         label: 'TX Therapy License (PT, OT, or SLP)',
         section: SECTIONS.LICENSURE,
@@ -481,8 +471,8 @@ const templates: TemplateDef[] = [
     description: 'Onboarding checklist for school-based SLP contractors in Texas.',
     items: [
       ...baseIdentityItems(1),
-      npiItem(4),
-      coverageItem(5),
+      npiItem(3),
+      coverageItem(4),
       ...slpLicenseItems(),
       {
         label: 'TX Educator Certification (if applicable)',
@@ -520,7 +510,7 @@ async function main() {
     update: {},
     create: {
       id: 'platform-org-id',
-      name: 'HumaneCare Platform',
+      name: 'Credentis Platform',
       planTier: 'pro',
       planFlags: { ai_doc_intelligence: false, sms_reminders: false },
     },
@@ -534,7 +524,7 @@ async function main() {
     create: {
       organizationId: platformOrg.id,
       clerkUserId: 'clerk_super_admin_placeholder',
-      email: 'admin@humanecare.app',
+      email: 'admin@credentis.com',
       name: 'Platform Admin',
       role: 'super_admin',
     },

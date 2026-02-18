@@ -1,11 +1,17 @@
 import {
   Injectable,
+  Inject,
   NotFoundException,
   BadRequestException,
+  ConflictException,
+  Logger,
+  forwardRef,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
 import { ChecklistTemplatesService } from '../checklist-templates/checklist-templates.service.js';
+import { EmailService } from '../../jobs/email.service.js';
 import { CreateClinicianDto } from './dto/create-clinician.dto.js';
 import { UpdateClinicianDto } from './dto/update-clinician.dto.js';
 import type { AuthenticatedUser } from '../../common/interfaces.js';
@@ -14,11 +20,18 @@ import { randomUUID } from 'crypto';
 
 @Injectable()
 export class CliniciansService {
+  private readonly logger = new Logger(CliniciansService.name);
+  private readonly frontendUrl: string;
+
   constructor(
     private prisma: PrismaService,
     private auditLogs: AuditLogsService,
     private templates: ChecklistTemplatesService,
-  ) {}
+    @Inject(forwardRef(() => EmailService)) private emailService: EmailService,
+    private config: ConfigService,
+  ) {
+    this.frontendUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+  }
 
   /**
    * Create a clinician and instantiate all checklist items from the template.
@@ -87,6 +100,12 @@ export class CliniciansService {
         itemCount: definitions.length,
       },
     });
+
+    // Send invite email (fire-and-forget, don't block creation)
+    const inviteUrl = `${this.frontendUrl}/clinician/invite/${inviteToken}`;
+    this.emailService
+      .sendClinicianInvite(dto.email, `${dto.firstName} ${dto.lastName}`, template.name, inviteUrl)
+      .catch((err) => this.logger.error(`Failed to send invite email to ${dto.email}: ${err.message}`));
 
     return result;
   }
@@ -370,5 +389,131 @@ export class CliniciansService {
         author: { select: { id: true, name: true, email: true, role: true } },
       },
     });
+  }
+
+  // ── Invite Flow ──────────────────────────────────────────────
+
+  /**
+   * Find a clinician by invite token.
+   */
+  async findByInviteToken(token: string) {
+    const clinician = await this.prisma.clinician.findUnique({
+      where: { inviteToken: token },
+      include: {
+        organization: { select: { id: true, name: true } },
+        template: { select: { id: true, name: true } },
+      },
+    });
+    if (!clinician) throw new NotFoundException('Invalid invite token');
+    return clinician;
+  }
+
+  /**
+   * Validate an invite token and return sanitized clinician info.
+   */
+  async validateInviteToken(token: string) {
+    const clinician = await this.findByInviteToken(token);
+
+    if (clinician.clerkUserId) {
+      throw new BadRequestException('Invite has already been accepted');
+    }
+    if (clinician.inviteExpiresAt && clinician.inviteExpiresAt < new Date()) {
+      throw new BadRequestException('Invite has expired');
+    }
+
+    return {
+      clinicianId: clinician.id,
+      firstName: clinician.firstName,
+      lastName: clinician.lastName,
+      email: clinician.email,
+      discipline: clinician.discipline,
+      organizationName: clinician.organization.name,
+    };
+  }
+
+  /**
+   * Link a Clerk user ID to a clinician after signup.
+   */
+  async linkClerkUser(inviteToken: string, clerkUserId: string) {
+    const clinician = await this.findByInviteToken(inviteToken);
+
+    if (clinician.clerkUserId) {
+      throw new BadRequestException('Invite has already been accepted');
+    }
+    if (clinician.inviteExpiresAt && clinician.inviteExpiresAt < new Date()) {
+      throw new BadRequestException('Invite has expired');
+    }
+
+    // Ensure no other clinician has this Clerk ID
+    const existing = await this.prisma.clinician.findUnique({
+      where: { clerkUserId },
+    });
+    if (existing) {
+      throw new ConflictException('This account is already linked to a clinician');
+    }
+
+    const updated = await this.prisma.clinician.update({
+      where: { id: clinician.id },
+      data: {
+        clerkUserId,
+        inviteToken: null,
+        inviteExpiresAt: null,
+      },
+    });
+
+    await this.auditLogs.log({
+      organizationId: clinician.organizationId,
+      actorRole: 'clinician' as any,
+      clinicianId: clinician.id,
+      entityType: 'clinician',
+      entityId: clinician.id,
+      action: 'invite_accepted',
+      details: { clerkUserId },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Resend an invite to a clinician (admin action).
+   */
+  async resendInvite(clinicianId: string, user: AuthenticatedUser) {
+    const clinician = await this.findOne(clinicianId, user.organizationId);
+
+    if (clinician.clerkUserId) {
+      throw new BadRequestException('Clinician has already accepted their invite');
+    }
+
+    const inviteToken = randomUUID();
+    const inviteExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const updated = await this.prisma.clinician.update({
+      where: { id: clinicianId },
+      data: { inviteToken, inviteExpiresAt },
+    });
+
+    // Send invite email
+    const inviteUrl = `${this.frontendUrl}/clinician/invite/${inviteToken}`;
+    this.emailService
+      .sendClinicianInvite(
+        clinician.email,
+        `${clinician.firstName} ${clinician.lastName}`,
+        (clinician as any).organization?.name || 'Your Agency',
+        inviteUrl,
+      )
+      .catch((err) => this.logger.error(`Failed to resend invite: ${err.message}`));
+
+    await this.auditLogs.log({
+      organizationId: user.organizationId,
+      actorUserId: user.id,
+      actorRole: user.role,
+      clinicianId,
+      entityType: 'clinician',
+      entityId: clinicianId,
+      action: 'invite_resent',
+      details: { email: clinician.email },
+    });
+
+    return updated;
   }
 }

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, DM_Sans, Bricolage_Grotesque } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import './globals.css';
 
@@ -8,13 +8,23 @@ const inter = Inter({
   subsets: ['latin'],
 });
 
+const dmSans = DM_Sans({
+  variable: '--font-dm-sans',
+  subsets: ['latin'],
+});
+
+const bricolage = Bricolage_Grotesque({
+  variable: '--font-bricolage',
+  subsets: ['latin'],
+});
+
 export const metadata: Metadata = {
   title: {
-    default: 'HumaneCare',
-    template: '%s | HumaneCare',
+    default: 'Credentis',
+    template: '%s | Credentis',
   },
   description:
-    'Clinician onboarding and compliance management for home health and staffing agencies.',
+    'Credential compliance for home health agencies. Automate clinician onboarding, track expirations, and know who is ready to staff.',
 };
 
 export default function RootLayout({
@@ -25,7 +35,7 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
-        <body className={`${inter.variable} font-[family-name:var(--font-inter)] antialiased`}>
+        <body className={`${inter.variable} ${dmSans.variable} ${bricolage.variable} font-[family-name:var(--font-inter)] antialiased`}>
           {children}
         </body>
       </html>

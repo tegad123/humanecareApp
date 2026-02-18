@@ -1,8 +1,9 @@
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
-import { ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
+import { CredentisLogo } from '@/components/logo';
+import { apiFetch } from '@/lib/api';
 
 export default async function ClinicianLayout({
   children,
@@ -12,13 +13,25 @@ export default async function ClinicianLayout({
   const { userId } = await auth();
   if (!userId) redirect('/sign-in');
 
+  // Block admin/staff users from accessing the clinician portal
+  try {
+    const me = await apiFetch<{ role: string; entityType?: string }>('/users/me');
+    if (me.role !== 'clinician' && me.entityType !== 'clinician') {
+      redirect('/dashboard');
+    }
+  } catch (e: any) {
+    // Re-throw Next.js redirect (it uses a special NEXT_REDIRECT error)
+    if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e;
+    // If /me fails, allow through — backend guards will protect API calls
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
         <div className="mx-auto flex h-14 max-w-lg items-center justify-between px-4">
           <Link href="/checklist" className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-primary-600" />
-            <span className="font-semibold text-slate-900">HumaneCare</span>
+            <CredentisLogo className="h-5 w-5" />
+            <span className="font-semibold text-slate-900">Credentis</span>
           </Link>
           <div className="flex items-center gap-3">
             <Link

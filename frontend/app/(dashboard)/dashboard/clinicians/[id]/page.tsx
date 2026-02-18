@@ -36,6 +36,7 @@ import {
   fetchClinicianProgress,
   fetchNotes,
   reviewChecklistItem,
+  resendClinicianInvite,
   type ClinicianWithProgress,
   type ChecklistItem,
   type ClinicianProgress,
@@ -74,6 +75,25 @@ export default function ClinicianDetailPage() {
 
   // Review modal
   const [reviewItem, setReviewItem] = useState<ChecklistItem | null>(null);
+
+  // Resend invite
+  const [resending, setResending] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
+
+  const handleResendInvite = async () => {
+    setResending(true);
+    setResendSuccess(false);
+    try {
+      const token = await getToken();
+      await resendClinicianInvite(token, id);
+      setResendSuccess(true);
+      setTimeout(() => setResendSuccess(false), 3000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend invite');
+    } finally {
+      setResending(false);
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -178,6 +198,24 @@ export default function ClinicianDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Resend Invite — show only if clinician hasn't accepted yet */}
+        {!clinician.clerkUserId && (
+          <div className="flex items-center gap-2">
+            {resendSuccess && (
+              <span className="text-xs text-success-600 font-medium">Invite sent!</span>
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleResendInvite}
+              loading={resending}
+            >
+              <Mail className="h-4 w-4" />
+              Resend Invite
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Override panel */}

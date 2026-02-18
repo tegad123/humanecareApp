@@ -1,4 +1,4 @@
-import { clientApiFetch } from '../api';
+import { clientApiFetch } from '../api-client';
 import type {
   Clinician,
   ChecklistItem,
@@ -191,6 +191,14 @@ export async function setOverride(
 export async function clearOverride(token: string | null, clinicianId: string) {
   return clientApiFetch<OverrideResult>(`/clinicians/${clinicianId}/override`, token, {
     method: 'DELETE',
+  });
+}
+
+/* ── Invites ── */
+
+export async function resendClinicianInvite(token: string | null, clinicianId: string) {
+  return clientApiFetch<Clinician>(`/clinicians/${clinicianId}/resend-invite`, token, {
+    method: 'POST',
   });
 }
 

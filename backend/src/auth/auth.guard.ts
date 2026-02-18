@@ -44,24 +44,44 @@ export class ClerkAuthGuard implements CanActivate {
 
       const clerkUserId = payload.sub;
 
+      // Try users table first (admin/staff — most frequent)
       const user = await this.prisma.user.findUnique({
         where: { clerkUserId },
       });
 
-      if (!user) {
-        throw new UnauthorizedException('User not found in system');
+      if (user) {
+        const authenticatedUser: AuthenticatedUser = {
+          id: user.id,
+          organizationId: user.organizationId,
+          role: user.role,
+          email: user.email,
+          clerkUserId: user.clerkUserId,
+          entityType: 'user',
+        };
+        request.user = authenticatedUser;
+        return true;
       }
 
-      const authenticatedUser: AuthenticatedUser = {
-        id: user.id,
-        organizationId: user.organizationId,
-        role: user.role,
-        email: user.email,
-        clerkUserId: user.clerkUserId,
-      };
+      // Fallback: try clinicians table
+      const clinician = await this.prisma.clinician.findUnique({
+        where: { clerkUserId },
+      });
 
-      request.user = authenticatedUser;
-      return true;
+      if (clinician) {
+        const authenticatedUser: AuthenticatedUser = {
+          id: clinician.id,
+          organizationId: clinician.organizationId,
+          role: 'clinician' as any,
+          email: clinician.email,
+          clerkUserId: clinician.clerkUserId!,
+          entityType: 'clinician',
+          clinicianId: clinician.id,
+        };
+        request.user = authenticatedUser;
+        return true;
+      }
+
+      throw new UnauthorizedException('User not found in system');
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
       this.logger.error('Token verification failed', error);
