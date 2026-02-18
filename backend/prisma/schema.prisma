@@ -1,0 +1,274 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ──────────────────────────────────────────────
+
+enum Role {
+  super_admin
+  admin
+  recruiter
+  compliance
+  scheduler
+  payroll
+  clinician
+}
+
+enum Discipline {
+  PT
+  OT
+  SLP
+  MSW
+  RN
+  LPN
+  HHA
+  PTA
+  COTA
+  OTHER
+}
+
+enum ChecklistItemType {
+  file_upload
+  text
+  date
+  select
+  e_signature
+  admin_status
+}
+
+enum ChecklistItemStatus {
+  not_started
+  submitted
+  pending_review
+  approved
+  rejected
+  expired
+}
+
+enum ClinicianStatus {
+  not_started
+  onboarding
+  ready
+  not_ready
+  inactive
+}
+
+enum PlanTier {
+  starter
+  growth
+  pro
+}
+
+// ─── Organizations ──────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  planTier  PlanTier @default(starter) @map("plan_tier")
+  planFlags Json     @default("{}") @map("plan_flags")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users                   User[]
+  clinicians              Clinician[]
+  checklistTemplates      ChecklistTemplate[]
+  clinicianChecklistItems ClinicianChecklistItem[]
+  auditLogs               AuditLog[]
+  internalNotes           InternalNote[]
+
+  @@map("organizations")
+}
+
+// ─── Users ──────────────────────────────────────────────
+
+model User {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  clerkUserId    String   @unique @map("clerk_user_id")
+  email          String
+  name           String?
+  role           Role     @default(admin)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignedClinicians Clinician[]              @relation("AssignedRecruiter")
+  auditLogs          AuditLog[]
+  internalNotes      InternalNote[]
+  reviewedItems      ClinicianChecklistItem[] @relation("ReviewedBy")
+
+  @@index([organizationId])
+  @@index([clerkUserId])
+  @@map("users")
+}
+
+// ─── Clinicians ─────────────────────────────────────────
+
+model Clinician {
+  id                     String          @id @default(uuid())
+  organizationId         String          @map("organization_id")
+  firstName              String          @map("first_name")
+  lastName               String          @map("last_name")
+  email                  String
+  phone                  String?
+  discipline             Discipline
+  templateId             String?         @map("template_id")
+  assignedRecruiterId    String?         @map("assigned_recruiter_id")
+  status                 ClinicianStatus @default(not_started)
+  adminOverrideActive    Boolean         @default(false) @map("admin_override_active")
+  adminOverrideValue     ClinicianStatus? @map("admin_override_value")
+  adminOverrideReason    String?         @map("admin_override_reason")
+  adminOverrideExpiresAt DateTime?       @map("admin_override_expires_at")
+  npi                    String?
+  coverageArea           String?         @map("coverage_area")
+  rateInternal           Decimal?        @map("rate_internal") @db.Decimal(10, 2)
+  notes                  String?
+  clerkUserId            String?         @unique @map("clerk_user_id")
+  inviteToken            String?         @unique @map("invite_token")
+  inviteExpiresAt        DateTime?       @map("invite_expires_at")
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+
+  organization      Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template          ChecklistTemplate?       @relation(fields: [templateId], references: [id])
+  assignedRecruiter User?                    @relation("AssignedRecruiter", fields: [assignedRecruiterId], references: [id])
+  checklistItems    ClinicianChecklistItem[]
+  auditLogs         AuditLog[]
+  internalNotes     InternalNote[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([email])
+  @@map("clinicians")
+}
+
+// ─── Checklist Templates ────────────────────────────────
+
+model ChecklistTemplate {
+  id             String   @id @default(uuid())
+  organizationId String?  @map("organization_id")
+  name           String
+  slug           String   @unique
+  state          String?
+  discipline     Discipline?
+  description    String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization    Organization?           @relation(fields: [organizationId], references: [id])
+  itemDefinitions ChecklistItemDefinition[]
+  clinicians      Clinician[]
+
+  @@index([organizationId])
+  @@map("checklist_templates")
+}
+
+// ─── Checklist Item Definitions ─────────────────────────
+
+model ChecklistItemDefinition {
+  id                String            @id @default(uuid())
+  templateId        String            @map("template_id")
+  label             String
+  section           String
+  type              ChecklistItemType
+  required          Boolean           @default(true)
+  blocking          Boolean           @default(false)
+  adminOnly         Boolean           @default(false) @map("admin_only")
+  hasExpiration     Boolean           @default(false) @map("has_expiration")
+  expirationFieldId String?           @map("expiration_field_id")
+  sortOrder         Int               @default(0) @map("sort_order")
+  configJson        Json?             @map("config_json")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  template       ChecklistTemplate        @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  clinicianItems ClinicianChecklistItem[]
+
+  @@index([templateId])
+  @@map("checklist_item_definitions")
+}
+
+// ─── Clinician Checklist Items ──────────────────────────
+
+model ClinicianChecklistItem {
+  id                      String              @id @default(uuid())
+  organizationId          String              @map("organization_id")
+  clinicianId             String              @map("clinician_id")
+  itemDefinitionId        String              @map("item_definition_id")
+  status                  ChecklistItemStatus @default(not_started)
+  valueText               String?             @map("value_text")
+  valueDate               DateTime?           @map("value_date")
+  valueSelect             String?             @map("value_select")
+  docStoragePath          String?             @map("doc_storage_path")
+  docOriginalName         String?             @map("doc_original_name")
+  docMimeType             String?             @map("doc_mime_type")
+  expiresAt               DateTime?           @map("expires_at")
+  docType                 String?             @map("doc_type")
+  extractedExpirationDate DateTime?           @map("extracted_expiration_date")
+  aiConfidence            Decimal?            @map("ai_confidence") @db.Decimal(5, 4)
+  reviewedById            String?             @map("reviewed_by_id")
+  reviewedAt              DateTime?           @map("reviewed_at")
+  rejectionReason         String?             @map("rejection_reason")
+  rejectionComment        String?             @map("rejection_comment")
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
+
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clinician      Clinician               @relation(fields: [clinicianId], references: [id], onDelete: Cascade)
+  itemDefinition ChecklistItemDefinition @relation(fields: [itemDefinitionId], references: [id])
+  reviewedBy     User?                   @relation("ReviewedBy", fields: [reviewedById], references: [id])
+
+  @@index([organizationId])
+  @@index([clinicianId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("clinician_checklist_items")
+}
+
+// ─── Audit Logs ─────────────────────────────────────────
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  actorUserId    String?  @map("actor_user_id")
+  actorRole      Role?    @map("actor_role")
+  clinicianId    String?  @map("clinician_id")
+  entityType     String   @map("entity_type")
+  entityId       String   @map("entity_id")
+  action         String
+  detailsJson    Json?    @map("details_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorUser    User?        @relation(fields: [actorUserId], references: [id])
+  clinician    Clinician?   @relation(fields: [clinicianId], references: [id])
+
+  @@index([organizationId])
+  @@index([clinicianId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ─── Internal Notes ─────────────────────────────────────
+
+model InternalNote {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  clinicianId    String   @map("clinician_id")
+  authorUserId   String   @map("author_user_id")
+  content        String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clinician    Clinician    @relation(fields: [clinicianId], references: [id], onDelete: Cascade)
+  author       User         @relation(fields: [authorUserId], references: [id])
+
+  @@index([organizationId, clinicianId])
+  @@map("internal_notes")
+}
