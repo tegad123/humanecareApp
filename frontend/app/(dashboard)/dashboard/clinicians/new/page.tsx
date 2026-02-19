@@ -1,14 +1,93 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Check } from 'lucide-react';
 import Link from 'next/link';
 import { Button, Card, CardContent, Input } from '@/components/ui';
 import { createClinician, fetchTemplates, type ChecklistTemplate } from '@/lib/api/admin';
 
 const DISCIPLINES = ['PT', 'OT', 'SLP', 'MSW', 'PTA', 'COTA', 'RN', 'LVN'];
+
+/* ── Custom Dropdown ── */
+function Dropdown({
+  label,
+  value,
+  options,
+  onChange,
+  placeholder,
+  disabled = false,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+  placeholder: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // close on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const selected = options.find((o) => o.value === value);
+
+  return (
+    <div className="space-y-1.5" ref={ref}>
+      <label className="block text-sm font-medium text-slate-700">{label}</label>
+      <div className="relative">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => !disabled && setOpen(!open)}
+          className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm text-left transition
+            ${disabled ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed' : 'border-slate-300 bg-white hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500'}
+            ${open ? 'ring-2 ring-primary-500 border-primary-500' : ''}
+          `}
+        >
+          <span className={selected ? 'text-slate-900' : 'text-slate-400'}>
+            {selected ? selected.label : placeholder}
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        {open && (
+          <ul className="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+            {options.length === 0 ? (
+              <li className="px-3 py-2 text-sm text-slate-400">No options</li>
+            ) : (
+              options.map((opt) => (
+                <li
+                  key={opt.value}
+                  onClick={() => {
+                    onChange(opt.value);
+                    setOpen(false);
+                  }}
+                  className={`flex items-center justify-between px-3 py-2 text-sm cursor-pointer transition
+                    ${opt.value === value ? 'bg-primary-50 text-primary-700 font-medium' : 'text-slate-700 hover:bg-slate-50'}
+                  `}
+                >
+                  {opt.label}
+                  {opt.value === value && <Check className="h-4 w-4 text-primary-600" />}
+                </li>
+              ))
+            )}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function NewClinicianPage() {
   const { getToken } = useAuth();
@@ -123,48 +202,29 @@ export default function NewClinicianPage() {
             />
 
             {/* Discipline */}
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-slate-700">
-                Discipline *
-              </label>
-              <select
-                value={discipline}
-                onChange={(e) => {
-                  setDiscipline(e.target.value);
-                  setTemplateId(''); // reset template when discipline changes
-                }}
-                className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              >
-                <option value="">Select discipline</option>
-                {DISCIPLINES.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Dropdown
+              label="Discipline *"
+              value={discipline}
+              placeholder="Select discipline"
+              onChange={(val) => {
+                setDiscipline(val);
+                setTemplateId('');
+              }}
+              options={DISCIPLINES.map((d) => ({ value: d, label: d }))}
+            />
 
             {/* Template */}
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-slate-700">
-                Checklist Template *
-              </label>
-              <select
-                value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
-                disabled={!discipline}
-                className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50"
-              >
-                <option value="">
-                  {discipline ? 'Select template' : 'Select a discipline first'}
-                </option>
-                {filteredTemplates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Dropdown
+              label="Checklist Template *"
+              value={templateId}
+              placeholder={discipline ? 'Select template' : 'Select a discipline first'}
+              disabled={!discipline}
+              onChange={setTemplateId}
+              options={filteredTemplates.map((t) => ({
+                value: t.id,
+                label: t.name,
+              }))}
+            />
 
             <Input
               label="NPI"
