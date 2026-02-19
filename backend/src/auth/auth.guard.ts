@@ -6,7 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { verifyToken } from '@clerk/backend';
+import { verifyToken, createClerkClient } from '@clerk/backend';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { IS_PUBLIC_KEY } from './decorators/index.js';
@@ -79,6 +79,45 @@ export class ClerkAuthGuard implements CanActivate {
         };
         request.user = authenticatedUser;
         return true;
+      }
+
+      // Attempt auto-link: user may have been invited (pending_ clerkUserId)
+      try {
+        const clerkClient = createClerkClient({
+          secretKey: this.config.get<string>('CLERK_SECRET_KEY')!,
+        });
+        const clerkUser = await clerkClient.users.getUser(clerkUserId);
+        const email =
+          clerkUser.emailAddresses?.[0]?.emailAddress;
+
+        if (email) {
+          const pendingUser = await this.prisma.user.findFirst({
+            where: { email, clerkUserId: { startsWith: 'pending_' } },
+          });
+
+          if (pendingUser) {
+            const updated = await this.prisma.user.update({
+              where: { id: pendingUser.id },
+              data: { clerkUserId },
+            });
+
+            const authenticatedUser: AuthenticatedUser = {
+              id: updated.id,
+              organizationId: updated.organizationId,
+              role: updated.role,
+              email: updated.email,
+              clerkUserId: updated.clerkUserId,
+              entityType: 'user',
+            };
+            request.user = authenticatedUser;
+            this.logger.log(
+              `Auto-linked invited user ${email} (${updated.role}) on first sign-in`,
+            );
+            return true;
+          }
+        }
+      } catch (linkError) {
+        this.logger.warn('Auto-link attempt failed', linkError);
       }
 
       throw new UnauthorizedException('User not found in system');

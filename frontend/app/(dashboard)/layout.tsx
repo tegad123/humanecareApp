@@ -23,7 +23,8 @@ export default async function DashboardLayout({
   } catch (e: any) {
     // Re-throw Next.js redirect (it uses a special NEXT_REDIRECT error)
     if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e;
-    // If /me fails, allow through — backend guards will protect API calls
+    // If /me fails, user is not linked to any org → redirect to no-access
+    redirect('/no-access');
   }
 
   return (

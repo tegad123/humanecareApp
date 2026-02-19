@@ -329,3 +329,32 @@ model InternalNote {
   @@index([organizationId, clinicianId])
   @@map("internal_notes")
 }
+
+// ─── Access Requests ───────────────────────────────────
+
+enum AccessRequestStatus {
+  pending
+  reviewed
+  approved
+  rejected
+}
+
+model AccessRequest {
+  id                      String              @id @default(uuid())
+  agencyName              String              @map("agency_name")
+  requesterName           String              @map("requester_name")
+  workEmail               String              @map("work_email")
+  phone                   String?
+  state                   String?
+  estimatedClinicianCount Int?                @map("estimated_clinician_count")
+  emr                     String?
+  status                  AccessRequestStatus @default(pending)
+  reviewedAt              DateTime?           @map("reviewed_at")
+  reviewNotes             String?             @map("review_notes")
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("access_requests")
+}

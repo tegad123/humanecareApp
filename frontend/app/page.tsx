@@ -13,12 +13,13 @@ export default async function Home() {
       if (user.role === 'clinician' || user.entityType === 'clinician') {
         redirect('/checklist');
       }
+      redirect('/dashboard');
     } catch (e: any) {
       // Re-throw Next.js redirect
       if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e;
-      // If /me fails (user not yet linked), default to dashboard
+      // If /me fails, user is not linked to any org → send to no-access page
+      redirect('/no-access');
     }
-    redirect('/dashboard');
   }
 
   return <LandingPage />;

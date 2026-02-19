@@ -76,6 +76,7 @@ export default function LandingPage() {
             <button onClick={() => scrollTo('faq')} className="hover:text-primary-600 transition-colors">FAQ</button>
           </nav>
           <div className="flex items-center gap-3">
+            <Link href="/request-access" className="hidden sm:inline-flex text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Request Access</Link>
             <Link href="/sign-in" className="hidden sm:inline-flex text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Sign In</Link>
             <Link href="/sign-in" className="inline-flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
               Get Started
@@ -523,6 +524,7 @@ export default function LandingPage() {
               <span className="text-slate-600 text-sm ml-2">Credential compliance for home health agencies.</span>
             </div>
             <div className="flex gap-6 text-sm text-slate-500">
+              <Link href="/request-access" className="hover:text-slate-300 transition-colors">Request Access</Link>
               <a href="#" className="hover:text-slate-300 transition-colors">Privacy</a>
               <a href="#" className="hover:text-slate-300 transition-colors">Terms</a>
               <a href="mailto:support@credentis.com" className="hover:text-slate-300 transition-colors">Contact</a>

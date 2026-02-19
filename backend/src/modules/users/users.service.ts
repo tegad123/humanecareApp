@@ -4,7 +4,9 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { EmailService } from '../../jobs/email.service.js';
 import { InviteUserDto } from './dto/invite-user.dto.js';
 import { Role } from '../../../generated/prisma/client.js';
 
@@ -12,7 +14,11 @@ import { Role } from '../../../generated/prisma/client.js';
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+    private config: ConfigService,
+  ) {}
 
   async invite(dto: InviteUserDto) {
     // Check org exists
@@ -40,8 +46,50 @@ export class UsersService {
       },
     });
 
-    // In production, send Clerk invitation email here
-    // For dev, just log it
+    // Send invite email with sign-in link
+    const frontendUrl =
+      this.config.get<string>('FRONTEND_URL') || 'https://credentis.app';
+    const signInUrl = `${frontendUrl}/sign-in`;
+    const roleName = dto.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+    try {
+      await this.emailService.send({
+        to: dto.email,
+        subject: `You've been invited to join ${org.name} on Credentis`,
+        text: [
+          `Hi${dto.name ? ` ${dto.name}` : ''},`,
+          '',
+          `${org.name} has invited you to join their team on Credentis as a ${roleName}.`,
+          '',
+          `Sign in with this email address to get started:`,
+          signInUrl,
+          '',
+          `Credentis uses passwordless sign-in — you'll receive a magic link to your email when you sign in.`,
+          '',
+          'Thank you,',
+          'Credentis Team',
+        ].join('\n'),
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #1e293b;">Welcome to ${org.name}</h2>
+            <p>Hi${dto.name ? ` ${dto.name}` : ''},</p>
+            <p>${org.name} has invited you to join their team on Credentis as a <strong>${roleName}</strong>.</p>
+            <p>Sign in with this email address to get started:</p>
+            <p style="margin: 24px 0;">
+              <a href="${signInUrl}"
+                 style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                Sign In to Credentis
+              </a>
+            </p>
+            <p style="color: #64748b; font-size: 14px;">Credentis uses passwordless sign-in — you'll receive a magic link to your email when you sign in.</p>
+            <p style="color: #64748b; font-size: 14px;">Thank you,<br/>Credentis Team</p>
+          </div>
+        `,
+      });
+    } catch (emailError: any) {
+      this.logger.warn(`Failed to send invite email to ${dto.email}: ${emailError.message}`);
+    }
+
     this.logger.log(`Invited user: ${dto.email} to org ${org.name} as ${dto.role}`);
 
     return {
@@ -49,7 +97,7 @@ export class UsersService {
       email: user.email,
       role: user.role,
       organizationId: user.organizationId,
-      message: 'User created. In production, a Clerk invitation email would be sent.',
+      message: 'User invited. An email has been sent with sign-in instructions.',
     };
   }
 

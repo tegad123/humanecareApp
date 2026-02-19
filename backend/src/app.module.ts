@@ -14,6 +14,7 @@ import { JobsModule } from './jobs/jobs.module.js';
 import { TemplateCustomizationModule } from './modules/template-customization/template-customization.module.js';
 import { TemplateDocumentsModule } from './modules/template-documents/template-documents.module.js';
 import { EmailSettingsModule } from './modules/email-settings/email-settings.module.js';
+import { AccessRequestsModule } from './modules/access-requests/access-requests.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { EmailSettingsModule } from './modules/email-settings/email-settings.mod
     TemplateCustomizationModule,
     TemplateDocumentsModule,
     EmailSettingsModule,
+    AccessRequestsModule,
   ],
 })
 export class AppModule {}
