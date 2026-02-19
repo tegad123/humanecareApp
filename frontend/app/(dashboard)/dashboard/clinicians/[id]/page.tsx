@@ -14,8 +14,10 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
+  AlertTriangle,
   FileText,
   Download,
+  PenTool,
 } from 'lucide-react';
 import {
   Badge,
@@ -313,9 +315,14 @@ export default function ClinicianDetailPage() {
                         >
                           {statusIcon(item.status)}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-900 truncate">
-                              {item.itemDefinition.label}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium text-slate-900 truncate">
+                                {item.itemDefinition.label}
+                              </p>
+                              {item.itemDefinition.highRisk && (
+                                <AlertTriangle className="h-3.5 w-3.5 text-warning-500 shrink-0" />
+                              )}
+                            </div>
                             <div className="flex items-center gap-2 mt-0.5">
                               <Badge status={item.status}>
                                 {formatStatus(item.status)}
@@ -341,6 +348,17 @@ export default function ClinicianDetailPage() {
                               <p className="text-xs text-danger-600 mt-1">
                                 Rejected: {item.rejectionReason} — {item.rejectionComment}
                               </p>
+                            )}
+                            {item.signerName && (
+                              <div className="flex items-center gap-1 mt-1 text-xs text-slate-500">
+                                <PenTool className="h-3 w-3" />
+                                <span>
+                                  Signed by {item.signerName}
+                                  {item.signatureTimestamp && (
+                                    <> on {new Date(item.signatureTimestamp).toLocaleDateString()}</>
+                                  )}
+                                </span>
+                              </div>
                             )}
                           </div>
 

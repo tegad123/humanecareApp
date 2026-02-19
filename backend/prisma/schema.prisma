@@ -81,6 +81,8 @@ model Organization {
   clinicianChecklistItems ClinicianChecklistItem[]
   auditLogs               AuditLog[]
   internalNotes           InternalNote[]
+  templateDocuments       TemplateDocument[]
+  emailSettings           OrgEmailSettings?
 
   @@map("organizations")
 }
@@ -151,19 +153,24 @@ model Clinician {
 // ─── Checklist Templates ────────────────────────────────
 
 model ChecklistTemplate {
-  id             String   @id @default(uuid())
-  organizationId String?  @map("organization_id")
-  name           String
-  slug           String   @unique
-  state          String?
-  discipline     Discipline?
-  description    String?
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(uuid())
+  organizationId   String?  @map("organization_id")
+  name             String
+  slug             String   @unique
+  state            String?
+  discipline       Discipline?
+  description      String?
+  sourceTemplateId String?  @map("source_template_id")
+  isCustomized     Boolean  @default(false) @map("is_customized")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
-  organization    Organization?           @relation(fields: [organizationId], references: [id])
-  itemDefinitions ChecklistItemDefinition[]
-  clinicians      Clinician[]
+  organization      Organization?           @relation(fields: [organizationId], references: [id])
+  sourceTemplate    ChecklistTemplate?      @relation("TemplateClone", fields: [sourceTemplateId], references: [id])
+  clonedTemplates   ChecklistTemplate[]     @relation("TemplateClone")
+  itemDefinitions   ChecklistItemDefinition[]
+  clinicians        Clinician[]
+  templateDocuments TemplateDocument[]
 
   @@index([organizationId])
   @@map("checklist_templates")
@@ -184,10 +191,15 @@ model ChecklistItemDefinition {
   expirationFieldId String?           @map("expiration_field_id")
   sortOrder         Int               @default(0) @map("sort_order")
   configJson        Json?             @map("config_json")
+  instructions      String?
+  highRisk          Boolean           @default(false) @map("high_risk")
+  enabled           Boolean           @default(true)
+  linkedDocumentId  String?           @map("linked_document_id")
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
 
   template       ChecklistTemplate        @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  linkedDocument TemplateDocument?         @relation(fields: [linkedDocumentId], references: [id], onDelete: SetNull)
   clinicianItems ClinicianChecklistItem[]
 
   @@index([templateId])
@@ -216,6 +228,11 @@ model ClinicianChecklistItem {
   reviewedAt              DateTime?           @map("reviewed_at")
   rejectionReason         String?             @map("rejection_reason")
   rejectionComment        String?             @map("rejection_comment")
+  signerName              String?             @map("signer_name")
+  signatureTimestamp      DateTime?           @map("signature_timestamp")
+  signerIp                String?             @map("signer_ip")
+  signatureHash           String?             @map("signature_hash")
+  signedDocPath           String?             @map("signed_doc_path")
   createdAt               DateTime            @default(now()) @map("created_at")
   updatedAt               DateTime            @updatedAt @map("updated_at")
 
@@ -229,6 +246,46 @@ model ClinicianChecklistItem {
   @@index([status])
   @@index([expiresAt])
   @@map("clinician_checklist_items")
+}
+
+// ─── Template Documents ─────────────────────────────────
+
+model TemplateDocument {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  templateId     String   @map("template_id")
+  name           String
+  storagePath    String   @map("storage_path")
+  mimeType       String?  @map("mime_type")
+  fileSizeBytes  Int?     @map("file_size_bytes")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template     ChecklistTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  linkedItems  ChecklistItemDefinition[]
+
+  @@index([organizationId])
+  @@index([templateId])
+  @@map("template_documents")
+}
+
+// ─── Org Email Settings ─────────────────────────────────
+
+model OrgEmailSettings {
+  id                 String   @id @default(uuid())
+  organizationId     String   @unique @map("organization_id")
+  subject            String?
+  introText          String?  @map("intro_text")
+  requiredItemsIntro String?  @map("required_items_intro")
+  signatureBlock     String?  @map("signature_block")
+  legalDisclaimer    String?  @map("legal_disclaimer")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("org_email_settings")
 }
 
 // ─── Audit Logs ─────────────────────────────────────────

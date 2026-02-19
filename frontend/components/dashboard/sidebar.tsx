@@ -7,6 +7,7 @@ import {
   Users,
   ClipboardList,
   FileText,
+  Mail,
   Menu,
   X,
 } from 'lucide-react';
@@ -15,6 +16,8 @@ import { useState } from 'react';
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   { href: '/dashboard/clinicians', label: 'Clinicians', icon: Users },
+  { href: '/dashboard/templates', label: 'Templates', icon: ClipboardList },
+  { href: '/dashboard/email-settings', label: 'Email Settings', icon: Mail },
   { href: '/dashboard/audit-logs', label: 'Audit Logs', icon: FileText },
 ];
 

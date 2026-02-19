@@ -32,3 +32,4 @@ backend/prisma/migrations/*.sql
 
 # Build
 build/
+.vercel

@@ -22,6 +22,7 @@ export interface Clinician {
 
 export interface ChecklistItemDefinition {
   id: string;
+  templateId: string;
   label: string;
   section: string;
   type: string;
@@ -31,6 +32,9 @@ export interface ChecklistItemDefinition {
   hasExpiration: boolean;
   sortOrder: number;
   configJson: Record<string, any> | null;
+  instructions: string | null;
+  highRisk: boolean;
+  linkedDocumentId: string | null;
 }
 
 export interface ChecklistItem {
@@ -48,6 +52,11 @@ export interface ChecklistItem {
   reviewedAt: string | null;
   rejectionReason: string | null;
   rejectionComment: string | null;
+  signerName: string | null;
+  signatureTimestamp: string | null;
+  signerIp: string | null;
+  signatureHash: string | null;
+  signedDocPath: string | null;
   itemDefinition: ChecklistItemDefinition;
 }
 
@@ -105,4 +114,15 @@ export async function getUploadUrl(
 
 export async function getDownloadUrl(token: string | null, key: string) {
   return clientApiFetch<{ url: string }>(`/storage/download-url/${key}`, token);
+}
+
+export async function getLinkedDocumentUrl(
+  token: string | null,
+  templateId: string,
+  docId: string,
+) {
+  return clientApiFetch<{ url: string; name: string; mimeType: string | null }>(
+    `/templates/${templateId}/documents/${docId}/clinician-download`,
+    token,
+  );
 }

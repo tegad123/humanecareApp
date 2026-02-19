@@ -8,17 +8,20 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
+import { StorageService } from '../../storage/storage.service.js';
 import { ReadyToStaffService } from '../clinicians/ready-to-staff.service.js';
 import { SubmitItemDto } from './dto/submit-item.dto.js';
 import { ReviewItemDto } from './dto/review-item.dto.js';
 import type { AuthenticatedUser } from '../../common/interfaces.js';
 import { ChecklistItemStatus } from '../../../generated/prisma/client.js';
+import { createHash, randomUUID } from 'crypto';
 
 @Injectable()
 export class ChecklistItemsService {
   constructor(
     private prisma: PrismaService,
     private auditLogs: AuditLogsService,
+    private storage: StorageService,
     @Inject(forwardRef(() => ReadyToStaffService))
     private readyToStaff: ReadyToStaffService,
   ) {}
@@ -33,6 +36,7 @@ export class ChecklistItemsService {
         itemDefinition: {
           select: {
             id: true,
+            templateId: true,
             label: true,
             section: true,
             type: true,
@@ -42,6 +46,9 @@ export class ChecklistItemsService {
             hasExpiration: true,
             sortOrder: true,
             configJson: true,
+            instructions: true,
+            highRisk: true,
+            linkedDocumentId: true,
           },
         },
       },
@@ -66,6 +73,7 @@ export class ChecklistItemsService {
     itemId: string,
     dto: SubmitItemDto,
     user: AuthenticatedUser,
+    clientIp?: string,
   ) {
     const item = await this.prisma.clinicianChecklistItem.findFirst({
       where: { id: itemId, organizationId: user.organizationId },
@@ -112,12 +120,55 @@ export class ChecklistItemsService {
         updateData.valueSelect = dto.valueSelect;
         break;
 
-      case 'e_signature':
-        // For e-signatures, submission means they signed
+      case 'e_signature': {
+        // Enhanced e-signature: typed name + agreement + timestamp + IP + hash
+        if (!dto.signerName) throw new BadRequestException('Signer name is required for e-signature');
+        if (!dto.agreement) throw new BadRequestException('Agreement must be accepted for e-signature');
+
+        const signatureTimestamp = new Date();
+        const signerIp = clientIp || 'unknown';
+        const signatureHash = createHash('sha256')
+          .update(`${dto.signerName}|${item.clinicianId}|${itemId}|${signatureTimestamp.toISOString()}`)
+          .digest('hex');
+
         updateData.valueText = 'signed';
+        updateData.signerName = dto.signerName;
+        updateData.signatureTimestamp = signatureTimestamp;
+        updateData.signerIp = signerIp;
+        updateData.signatureHash = signatureHash;
         updateData.status = 'approved' as ChecklistItemStatus; // auto-approve
-        updateData.reviewedAt = new Date();
+        updateData.reviewedAt = signatureTimestamp;
+
+        // If item definition has a linked document, store a signature receipt
+        if (item.itemDefinition.linkedDocumentId) {
+          const receiptKey = `${user.organizationId}/${item.clinicianId}/${itemId}/signature-receipt-${randomUUID()}.json`;
+          const receipt = {
+            signerName: dto.signerName,
+            signatureTimestamp: signatureTimestamp.toISOString(),
+            signerIp,
+            signatureHash,
+            itemId,
+            clinicianId: item.clinicianId,
+            linkedDocumentId: item.itemDefinition.linkedDocumentId,
+            itemLabel: item.itemDefinition.label,
+          };
+
+          // Upload receipt to S3
+          const { url } = await this.storage.getUploadUrlForKey(receiptKey, 'application/json');
+          try {
+            await fetch(url, {
+              method: 'PUT',
+              body: JSON.stringify(receipt),
+              headers: { 'Content-Type': 'application/json' },
+            });
+            updateData.signedDocPath = receiptKey;
+          } catch {
+            // Non-blocking: receipt upload failure doesn't prevent signature
+            updateData.signedDocPath = null;
+          }
+        }
         break;
+      }
 
       case 'admin_status':
         if (user.role === 'clinician') {

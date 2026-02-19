@@ -12,6 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
 import { ChecklistTemplatesService } from '../checklist-templates/checklist-templates.service.js';
 import { EmailService } from '../../jobs/email.service.js';
+import { EmailSettingsService } from '../email-settings/email-settings.service.js';
 import { CreateClinicianDto } from './dto/create-clinician.dto.js';
 import { UpdateClinicianDto } from './dto/update-clinician.dto.js';
 import type { AuthenticatedUser } from '../../common/interfaces.js';
@@ -28,6 +29,7 @@ export class CliniciansService {
     private auditLogs: AuditLogsService,
     private templates: ChecklistTemplatesService,
     @Inject(forwardRef(() => EmailService)) private emailService: EmailService,
+    @Inject(forwardRef(() => EmailSettingsService)) private emailSettings: EmailSettingsService,
     private config: ConfigService,
   ) {
     this.frontendUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
@@ -42,9 +44,9 @@ export class CliniciansService {
     const template = await this.templates.findOne(dto.templateId, user.organizationId);
     if (!template) throw new BadRequestException('Template not found');
 
-    const definitions = await this.templates.getDefinitions(dto.templateId);
+    const definitions = await this.templates.getDefinitions(dto.templateId, { enabledOnly: true });
     if (definitions.length === 0) {
-      throw new BadRequestException('Template has no item definitions');
+      throw new BadRequestException('Template has no enabled item definitions');
     }
 
     // Generate invite token
@@ -103,8 +105,7 @@ export class CliniciansService {
 
     // Send invite email (fire-and-forget, don't block creation)
     const inviteUrl = `${this.frontendUrl}/clinician/invite/${inviteToken}`;
-    this.emailService
-      .sendClinicianInvite(dto.email, `${dto.firstName} ${dto.lastName}`, template.name, inviteUrl)
+    this.sendInviteWithSettings(dto.email, `${dto.firstName} ${dto.lastName}`, user.organizationId, inviteUrl, definitions)
       .catch((err) => this.logger.error(`Failed to send invite email to ${dto.email}: ${err.message}`));
 
     return result;
@@ -492,16 +493,18 @@ export class CliniciansService {
       data: { inviteToken, inviteExpiresAt },
     });
 
-    // Send invite email
+    // Send invite email with org email settings
     const inviteUrl = `${this.frontendUrl}/clinician/invite/${inviteToken}`;
-    this.emailService
-      .sendClinicianInvite(
-        clinician.email,
-        `${clinician.firstName} ${clinician.lastName}`,
-        (clinician as any).organization?.name || 'Your Agency',
-        inviteUrl,
-      )
-      .catch((err) => this.logger.error(`Failed to resend invite: ${err.message}`));
+    const definitions = clinician.templateId
+      ? await this.templates.getDefinitions(clinician.templateId, { enabledOnly: true })
+      : [];
+    this.sendInviteWithSettings(
+      clinician.email,
+      `${clinician.firstName} ${clinician.lastName}`,
+      user.organizationId,
+      inviteUrl,
+      definitions,
+    ).catch((err) => this.logger.error(`Failed to resend invite: ${err.message}`));
 
     await this.auditLogs.log({
       organizationId: user.organizationId,
@@ -515,5 +518,31 @@ export class CliniciansService {
     });
 
     return updated;
+  }
+
+  // ── Helpers ────────────────────────────────────────────────
+
+  /**
+   * Send invite email with org-specific email settings and required items list.
+   */
+  private async sendInviteWithSettings(
+    email: string,
+    name: string,
+    organizationId: string,
+    inviteUrl: string,
+    definitions: Array<{ label: string; required: boolean }>,
+  ) {
+    const [orgEmailSettings, org] = await Promise.all([
+      this.emailSettings.get(organizationId),
+      this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
+    ]);
+
+    const orgName = org?.name || 'Your Agency';
+    const requiredItems = definitions.filter(d => d.required).map(d => d.label);
+
+    await this.emailService.sendClinicianInvite(email, name, orgName, inviteUrl, {
+      emailSettings: orgEmailSettings,
+      requiredItems: requiredItems.length > 0 ? requiredItems : undefined,
+    });
   }
 }

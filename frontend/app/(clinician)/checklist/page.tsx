@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
+  AlertTriangle,
   FileText,
   ChevronRight,
 } from 'lucide-react';
@@ -172,9 +173,19 @@ export default function ChecklistPage() {
                       >
                         {statusIcon(item.status)}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-900 truncate">
-                            {item.itemDefinition.label}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-slate-900 truncate">
+                              {item.itemDefinition.label}
+                            </p>
+                            {item.itemDefinition.highRisk && (
+                              <AlertTriangle className="h-3.5 w-3.5 text-warning-500 shrink-0" />
+                            )}
+                          </div>
+                          {item.itemDefinition.instructions && (
+                            <p className="text-xs text-slate-500 truncate mt-0.5">
+                              {item.itemDefinition.instructions}
+                            </p>
+                          )}
                           <div className="flex items-center gap-2 mt-0.5">
                             <Badge status={item.status}>
                               {formatStatus(item.status)}

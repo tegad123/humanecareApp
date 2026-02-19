@@ -20,7 +20,7 @@ export class ChecklistTemplatesService {
       },
       orderBy: [{ discipline: 'asc' }, { name: 'asc' }],
       include: {
-        _count: { select: { itemDefinitions: true } },
+        _count: { select: { itemDefinitions: { where: { enabled: true } } } },
       },
     });
   }
@@ -47,9 +47,12 @@ export class ChecklistTemplatesService {
   /**
    * Get just the item definitions for a template (used when instantiating a checklist).
    */
-  async getDefinitions(templateId: string) {
+  async getDefinitions(templateId: string, options?: { enabledOnly?: boolean }) {
     return this.prisma.checklistItemDefinition.findMany({
-      where: { templateId },
+      where: {
+        templateId,
+        ...(options?.enabledOnly && { enabled: true }),
+      },
       orderBy: { sortOrder: 'asc' },
     });
   }

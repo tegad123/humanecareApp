@@ -100,34 +100,77 @@ export class EmailService {
 
   /**
    * Send a clinician invite email with a link to accept and sign up.
+   * Supports customizable email settings and required items list.
    */
   async sendClinicianInvite(
     clinicianEmail: string,
     clinicianName: string,
     organizationName: string,
     inviteUrl: string,
+    options?: {
+      emailSettings?: {
+        subject?: string;
+        introText?: string;
+        requiredItemsIntro?: string;
+        signatureBlock?: string;
+        legalDisclaimer?: string;
+      };
+      requiredItems?: string[];
+    },
   ): Promise<void> {
-    const subject = `You've been invited to join ${organizationName} on Credentis`;
+    const settings = options?.emailSettings;
+    const requiredItems = options?.requiredItems;
+
+    // Resolve subject with template variables
+    const rawSubject = settings?.subject || `You've been invited to join {{orgName}} on Credentis`;
+    const subject = rawSubject.replace(/\{\{orgName\}\}/g, organizationName);
+
+    // Resolve intro text
+    const rawIntro = settings?.introText || `{{orgName}} has invited you to complete your onboarding on Credentis.`;
+    const introText = rawIntro.replace(/\{\{orgName\}\}/g, organizationName);
+
+    // Resolve signature block
+    const rawSignature = settings?.signatureBlock || `Thank you,\nCredentis Team`;
+    const signatureBlock = rawSignature.replace(/\{\{orgName\}\}/g, organizationName);
+
+    // Required items section
+    const requiredItemsIntro = settings?.requiredItemsIntro || 'Here are the items you need to complete:';
+    let requiredItemsHtml = '';
+    let requiredItemsText = '';
+    if (requiredItems && requiredItems.length > 0) {
+      requiredItemsText = `\n${requiredItemsIntro}\n${requiredItems.map(i => `  - ${i}`).join('\n')}\n`;
+      requiredItemsHtml = `
+        <p style="margin-top: 16px; font-weight: 600;">${requiredItemsIntro}</p>
+        <ul style="color: #334155; padding-left: 20px;">
+          ${requiredItems.map(i => `<li style="margin-bottom: 4px;">${i}</li>`).join('')}
+        </ul>
+      `;
+    }
+
+    // Legal disclaimer
+    const legalDisclaimer = settings?.legalDisclaimer || '';
 
     const text = [
       `Hi ${clinicianName},`,
       '',
-      `${organizationName} has invited you to complete your onboarding on Credentis.`,
-      '',
+      introText,
+      requiredItemsText,
       `Click the link below to get started:`,
       inviteUrl,
       '',
       'This invite link will expire in 7 days.',
       '',
-      'Thank you,',
-      'Credentis Team',
+      signatureBlock,
+      ...(legalDisclaimer ? ['', '---', legalDisclaimer] : []),
     ].join('\n');
 
+    const signatureHtml = signatureBlock.replace(/\n/g, '<br/>');
     const html = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #1e293b;">Welcome to Credentis</h2>
+        <h2 style="color: #1e293b;">Welcome to ${organizationName}</h2>
         <p>Hi ${clinicianName},</p>
-        <p><strong>${organizationName}</strong> has invited you to complete your onboarding on Credentis.</p>
+        <p>${introText}</p>
+        ${requiredItemsHtml}
         <p style="margin: 24px 0;">
           <a href="${inviteUrl}"
              style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">
@@ -135,7 +178,8 @@ export class EmailService {
           </a>
         </p>
         <p style="color: #64748b; font-size: 14px;">This invite link will expire in 7 days.</p>
-        <p style="color: #64748b; font-size: 14px;">Thank you,<br/>Credentis Team</p>
+        <p style="color: #64748b; font-size: 14px;">${signatureHtml}</p>
+        ${legalDisclaimer ? `<hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;"/><p style="color: #94a3b8; font-size: 12px;">${legalDisclaimer}</p>` : ''}
       </div>
     `;
 

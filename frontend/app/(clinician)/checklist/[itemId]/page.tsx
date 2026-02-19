@@ -9,6 +9,9 @@ import {
   FileText,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  Download,
+  PenTool,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button, Badge, Card, CardContent, Input, Spinner } from '@/components/ui';
@@ -16,6 +19,7 @@ import {
   fetchMyChecklist,
   submitChecklistItem,
   getUploadUrl,
+  getLinkedDocumentUrl,
   type ChecklistItem,
 } from '@/lib/api/clinicians';
 
@@ -41,6 +45,12 @@ export default function ChecklistItemPage() {
   const [file, setFile] = useState<File | null>(null);
   const [expiresAt, setExpiresAt] = useState('');
 
+  // E-signature state
+  const [signerName, setSignerName] = useState('');
+  const [agreement, setAgreement] = useState(false);
+  const [linkedDocUrl, setLinkedDocUrl] = useState<string | null>(null);
+  const [linkedDocName, setLinkedDocName] = useState<string | null>(null);
+
   useEffect(() => {
     async function load() {
       try {
@@ -55,6 +65,21 @@ export default function ChecklistItemPage() {
         if (found.valueDate) setDateValue(found.valueDate.split('T')[0]);
         if (found.valueSelect) setSelectValue(found.valueSelect);
         if (found.expiresAt) setExpiresAt(found.expiresAt.split('T')[0]);
+
+        // Fetch linked document URL for e-signature items
+        if (found.itemDefinition.linkedDocumentId && found.itemDefinition.type === 'e_signature') {
+          try {
+            const docData = await getLinkedDocumentUrl(
+              token,
+              found.itemDefinition.templateId,
+              found.itemDefinition.linkedDocumentId,
+            );
+            setLinkedDocUrl(docData.url);
+            setLinkedDocName(docData.name);
+          } catch {
+            // Document may have been deleted — non-fatal
+          }
+        }
       } catch (err: any) {
         setError(err.message || 'Failed to load item');
       } finally {
@@ -115,7 +140,19 @@ export default function ChecklistItemPage() {
           payload.valueSelect = selectValue;
           break;
         case 'e_signature':
+          if (!signerName.trim()) {
+            setError('Please type your full legal name');
+            setSubmitting(false);
+            return;
+          }
+          if (!agreement) {
+            setError('You must agree to the terms to sign');
+            setSubmitting(false);
+            return;
+          }
           payload.valueText = 'signed';
+          payload.signerName = signerName.trim();
+          payload.agreement = true;
           break;
       }
 
@@ -127,7 +164,7 @@ export default function ChecklistItemPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [item, file, textValue, dateValue, selectValue, expiresAt, getToken, router]);
+  }, [item, file, textValue, dateValue, selectValue, expiresAt, signerName, agreement, getToken, router]);
 
   if (loading) {
     return (
@@ -180,8 +217,33 @@ export default function ChecklistItemPage() {
               Blocking
             </span>
           )}
+          {def.highRisk && (
+            <span className="text-[10px] text-warning-700 font-medium uppercase">
+              High Risk
+            </span>
+          )}
         </div>
+        {def.instructions && (
+          <p className="text-sm text-slate-600 mt-2">{def.instructions}</p>
+        )}
       </div>
+
+      {/* High-risk warning */}
+      {def.highRisk && (
+        <Card className="border-warning-500/30 bg-warning-50">
+          <CardContent className="flex gap-3">
+            <AlertTriangle className="h-5 w-5 text-warning-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-warning-800">
+                High-Risk Item
+              </p>
+              <p className="text-sm text-warning-700 mt-0.5">
+                This item requires extra attention. Please review all details carefully before submitting.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Rejection notice */}
       {isRejected && (
@@ -242,6 +304,14 @@ export default function ChecklistItemPage() {
             {item.docOriginalName && (
               <p className="text-xs text-slate-500 mt-1">
                 File: {item.docOriginalName}
+              </p>
+            )}
+            {item.signerName && (
+              <p className="text-xs text-slate-500 mt-1">
+                Signed by: {item.signerName}
+                {item.signatureTimestamp && (
+                  <> on {new Date(item.signatureTimestamp).toLocaleString()}</>
+                )}
               </p>
             )}
           </CardContent>
@@ -321,14 +391,95 @@ export default function ChecklistItemPage() {
 
             {/* E-Signature */}
             {def.type === 'e_signature' && (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm text-slate-700 mb-3">
-                  By clicking the button below, you agree to and acknowledge the
-                  terms of this item.
-                </p>
-                <p className="text-xs text-slate-500">
-                  This constitutes your electronic signature.
-                </p>
+              <div className="space-y-4">
+                {/* Linked document viewer */}
+                {linkedDocUrl && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-slate-700">
+                      Document to Review
+                    </label>
+                    <div className="rounded-lg border border-slate-200 overflow-hidden">
+                      <object
+                        data={linkedDocUrl}
+                        type="application/pdf"
+                        className="w-full h-[400px]"
+                      >
+                        <div className="flex flex-col items-center justify-center py-8 bg-slate-50">
+                          <FileText className="h-8 w-8 text-slate-400 mb-2" />
+                          <p className="text-sm text-slate-600 mb-2">
+                            Unable to display document inline
+                          </p>
+                          <a
+                            href={linkedDocUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-sm text-primary-600 hover:text-primary-700 font-medium"
+                          >
+                            <Download className="h-4 w-4" />
+                            Download {linkedDocName || 'Document'}
+                          </a>
+                        </div>
+                      </object>
+                    </div>
+                    <a
+                      href={linkedDocUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download {linkedDocName || 'Document'}
+                    </a>
+                  </div>
+                )}
+
+                {/* Signature form */}
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <PenTool className="h-4 w-4 text-slate-500" />
+                    <span className="text-sm font-medium text-slate-700">Electronic Signature</span>
+                  </div>
+
+                  {/* Typed name */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Type your full legal name
+                    </label>
+                    <input
+                      type="text"
+                      value={signerName}
+                      onChange={(e) => setSignerName(e.target.value)}
+                      placeholder="e.g., Jane A. Doe"
+                      className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                    {signerName.trim() && (
+                      <p className="mt-2 text-lg font-serif italic text-slate-800">
+                        {signerName}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Agreement checkbox */}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={agreement}
+                      onChange={(e) => setAgreement(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    <span className="text-sm text-slate-700">
+                      I have read and agree to the terms of this document. I understand that this constitutes my legally binding electronic signature.
+                    </span>
+                  </label>
+
+                  {/* Timestamp preview */}
+                  {signerName.trim() && agreement && (
+                    <p className="text-xs text-slate-500">
+                      Signing as <span className="font-medium">{signerName.trim()}</span> on{' '}
+                      {new Date().toLocaleString()}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 

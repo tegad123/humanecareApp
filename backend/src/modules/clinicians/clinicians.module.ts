@@ -5,9 +5,10 @@ import { ReadyToStaffService } from './ready-to-staff.service.js';
 import { ChecklistTemplatesModule } from '../checklist-templates/checklist-templates.module.js';
 import { ChecklistItemsModule } from '../checklist-items/checklist-items.module.js';
 import { JobsModule } from '../../jobs/jobs.module.js';
+import { EmailSettingsModule } from '../email-settings/email-settings.module.js';
 
 @Module({
-  imports: [ChecklistTemplatesModule, forwardRef(() => ChecklistItemsModule), forwardRef(() => JobsModule)],
+  imports: [ChecklistTemplatesModule, forwardRef(() => ChecklistItemsModule), forwardRef(() => JobsModule), EmailSettingsModule],
   controllers: [CliniciansController],
   providers: [CliniciansService, ReadyToStaffService],
   exports: [CliniciansService, ReadyToStaffService],

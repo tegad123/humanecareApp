@@ -11,6 +11,9 @@ import { ChecklistTemplatesModule } from './modules/checklist-templates/checklis
 import { ChecklistItemsModule } from './modules/checklist-items/checklist-items.module.js';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module.js';
 import { JobsModule } from './jobs/jobs.module.js';
+import { TemplateCustomizationModule } from './modules/template-customization/template-customization.module.js';
+import { TemplateDocumentsModule } from './modules/template-documents/template-documents.module.js';
+import { EmailSettingsModule } from './modules/email-settings/email-settings.module.js';
 
 @Module({
   imports: [
@@ -26,6 +29,9 @@ import { JobsModule } from './jobs/jobs.module.js';
     ChecklistItemsModule,
     AuditLogsModule,
     JobsModule,
+    TemplateCustomizationModule,
+    TemplateDocumentsModule,
+    EmailSettingsModule,
   ],
 })
 export class AppModule {}

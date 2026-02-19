@@ -45,6 +45,21 @@ export class StorageService {
   }
 
   /**
+   * Generate a presigned URL for uploading a file with a specific S3 key.
+   */
+  async getUploadUrlForKey(key: string, contentType: string) {
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ContentType: contentType,
+    });
+
+    const url = await getSignedUrl(this.s3, command, { expiresIn: 300 });
+
+    return { url, key };
+  }
+
+  /**
    * Generate a presigned URL for downloading a file from S3.
    */
   async getDownloadUrl(key: string) {

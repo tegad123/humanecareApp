@@ -5,12 +5,14 @@ import {
   Patch,
   Param,
   Body,
+  Req,
 } from '@nestjs/common';
 import { ChecklistItemsService } from './checklist-items.service.js';
 import { SubmitItemDto } from './dto/submit-item.dto.js';
 import { ReviewItemDto } from './dto/review-item.dto.js';
 import { Roles, CurrentUser } from '../../auth/decorators/index.js';
 import type { AuthenticatedUser } from '../../common/interfaces.js';
+import type { Request } from 'express';
 
 @Controller('checklist-items')
 export class ChecklistItemsController {
@@ -21,8 +23,10 @@ export class ChecklistItemsController {
     @Param('id') id: string,
     @Body() dto: SubmitItemDto,
     @CurrentUser() user: any,
+    @Req() req: Request,
   ) {
-    return this.checklistItemsService.submit(id, dto, user as AuthenticatedUser);
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    return this.checklistItemsService.submit(id, dto, user as AuthenticatedUser, clientIp);
   }
 
   @Patch(':id/review')

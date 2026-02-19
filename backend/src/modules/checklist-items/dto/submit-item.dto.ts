@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsDateString, IsBoolean } from 'class-validator';
 
 export class SubmitItemDto {
   @IsOptional()
@@ -28,4 +28,13 @@ export class SubmitItemDto {
   @IsOptional()
   @IsDateString()
   expiresAt?: string;
+
+  // E-signature fields
+  @IsOptional()
+  @IsString()
+  signerName?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  agreement?: boolean;
 }
