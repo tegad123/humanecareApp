@@ -349,6 +349,7 @@ model AccessRequest {
   estimatedClinicianCount Int?                @map("estimated_clinician_count")
   emr                     String?
   status                  AccessRequestStatus @default(pending)
+  approvalToken           String?             @unique @map("approval_token")
   reviewedAt              DateTime?           @map("reviewed_at")
   reviewNotes             String?             @map("review_notes")
   createdAt               DateTime            @default(now()) @map("created_at")
