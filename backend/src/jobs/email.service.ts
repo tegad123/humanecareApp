@@ -23,7 +23,7 @@ export class EmailService {
     const apiKey = this.config.get<string>('RESEND_API_KEY');
     this.resend = apiKey ? new Resend(apiKey) : null;
     this.fromEmail =
-      this.config.get<string>('EMAIL_FROM') || 'onboarding@resend.dev';
+      this.config.get<string>('EMAIL_FROM') || 'Credentis <noreply@credentis.app>';
   }
 
   /**
