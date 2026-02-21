@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   FileText,
   Download,
+  Eye,
   PenTool,
 } from 'lucide-react';
 import {
@@ -25,6 +26,7 @@ import {
   Card,
   CardHeader,
   CardContent,
+  Modal,
   ProgressBar,
   Spinner,
 } from '@/components/ui';
@@ -141,13 +143,16 @@ export default function ClinicianDetailPage() {
     load(); // Refresh
   };
 
+  // Preview modal state
+  const [previewItem, setPreviewItem] = useState<ChecklistItem | null>(null);
+
   const handleDownload = async (key: string) => {
     try {
       const token = await getToken();
       const { url } = await getDownloadUrl(token, key);
       window.open(url, '_blank');
     } catch {
-      // silently fail
+      setError('Failed to download document. Please try again.');
     }
   };
 
@@ -365,13 +370,22 @@ export default function ClinicianDetailPage() {
                           {/* Actions */}
                           <div className="flex items-center gap-2 shrink-0">
                             {item.docStoragePath && (
-                              <button
-                                onClick={() => handleDownload(item.docStoragePath!)}
-                                className="p-1.5 text-slate-400 hover:text-primary-600 transition"
-                                title="Download document"
-                              >
-                                <Download className="h-4 w-4" />
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => setPreviewItem(item)}
+                                  className="p-1.5 text-slate-400 hover:text-primary-600 transition"
+                                  title="Preview document"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDownload(item.docStoragePath!)}
+                                  className="p-1.5 text-slate-400 hover:text-primary-600 transition"
+                                  title="Download document"
+                                >
+                                  <Download className="h-4 w-4" />
+                                </button>
+                              </>
                             )}
                             {(item.status === 'submitted' || item.status === 'pending_review') && (
                               <Button
@@ -401,9 +415,154 @@ export default function ClinicianDetailPage() {
           itemLabel={reviewItem.itemDefinition.label}
           onApprove={handleApprove}
           onReject={handleReject}
+          docStoragePath={reviewItem.docStoragePath}
+          docOriginalName={reviewItem.docOriginalName}
+          docMimeType={reviewItem.docMimeType}
+        />
+      )}
+
+      {/* Preview modal (for viewing documents without review actions) */}
+      {previewItem && (
+        <DocumentPreviewModal
+          open={!!previewItem}
+          onClose={() => setPreviewItem(null)}
+          itemLabel={previewItem.itemDefinition.label}
+          docStoragePath={previewItem.docStoragePath}
+          docOriginalName={previewItem.docOriginalName}
+          docMimeType={previewItem.docMimeType}
         />
       )}
     </div>
+  );
+}
+
+/* ── Document Preview Modal ── */
+
+function DocumentPreviewModal({
+  open,
+  onClose,
+  itemLabel,
+  docStoragePath,
+  docOriginalName,
+  docMimeType,
+}: {
+  open: boolean;
+  onClose: () => void;
+  itemLabel: string;
+  docStoragePath?: string | null;
+  docOriginalName?: string | null;
+  docMimeType?: string | null;
+}) {
+  const { getToken } = useAuth();
+  const [docUrl, setDocUrl] = useState<string | null>(null);
+  const [docLoading, setDocLoading] = useState(false);
+  const [docError, setDocError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !docStoragePath) {
+      setDocUrl(null);
+      setDocError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setDocLoading(true);
+    setDocError(null);
+
+    (async () => {
+      try {
+        const token = await getToken();
+        const { url } = await getDownloadUrl(token, docStoragePath);
+        if (!cancelled) setDocUrl(url);
+      } catch {
+        if (!cancelled) setDocError('Failed to load document');
+      } finally {
+        if (!cancelled) setDocLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [open, docStoragePath, getToken]);
+
+  const isPreviewable =
+    docMimeType?.startsWith('image/') || docMimeType === 'application/pdf';
+
+  if (!open) return null;
+
+  return (
+    <Modal open={open} onClose={onClose} title={itemLabel}>
+      <div className="space-y-3">
+        {docLoading && (
+          <div className="flex items-center justify-center py-12">
+            <Spinner size="sm" />
+          </div>
+        )}
+
+        {docError && (
+          <div className="flex flex-col items-center justify-center py-8 rounded-lg border border-slate-200 bg-slate-50">
+            <FileText className="h-6 w-6 text-slate-400 mb-1" />
+            <p className="text-xs text-danger-600">{docError}</p>
+          </div>
+        )}
+
+        {docUrl && !docLoading && (
+          <>
+            {isPreviewable ? (
+              <div className="rounded-lg border border-slate-200 overflow-hidden">
+                {docMimeType === 'application/pdf' ? (
+                  <object
+                    data={docUrl}
+                    type="application/pdf"
+                    className="w-full h-[450px]"
+                  >
+                    <div className="flex flex-col items-center justify-center py-8 bg-slate-50">
+                      <FileText className="h-6 w-6 text-slate-400 mb-2" />
+                      <p className="text-xs text-slate-500 mb-2">Unable to display PDF inline</p>
+                      <a
+                        href={docUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+                      >
+                        Open in new tab
+                      </a>
+                    </div>
+                  </object>
+                ) : (
+                  <img
+                    src={docUrl}
+                    alt={docOriginalName || 'Document'}
+                    className="w-full max-h-[450px] object-contain bg-slate-50"
+                  />
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <FileText className="h-8 w-8 text-slate-400 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-700 truncate">
+                    {docOriginalName || 'Document'}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {docMimeType || 'Unknown type'} — Preview not available
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <a
+              href={docUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 font-medium"
+            >
+              <Download className="h-4 w-4" />
+              Download {docOriginalName || 'Document'}
+            </a>
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 
