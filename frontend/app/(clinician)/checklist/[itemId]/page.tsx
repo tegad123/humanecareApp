@@ -160,7 +160,11 @@ export default function ChecklistItemPage() {
       setSuccess(true);
       setTimeout(() => router.push('/checklist'), 1500);
     } catch (err: any) {
-      setError(err.message || 'Submission failed');
+      const msg =
+        err instanceof TypeError && /fetch/i.test(err.message)
+          ? 'Unable to reach the server. Please check your connection and try again.'
+          : err.message || 'Submission failed';
+      setError(msg);
     } finally {
       setSubmitting(false);
     }
