@@ -190,7 +190,7 @@ export class ChecklistItemsService {
 
     await this.auditLogs.log({
       organizationId: user.organizationId,
-      actorUserId: user.id,
+      actorUserId: user.entityType === 'user' ? user.id : undefined,
       actorRole: user.role,
       clinicianId: item.clinicianId,
       entityType: 'checklist_item',
