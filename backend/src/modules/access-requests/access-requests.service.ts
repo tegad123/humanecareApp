@@ -21,7 +21,7 @@ export class AccessRequestsService {
     private config: ConfigService,
   ) {
     this.apiUrl = this.config.get<string>('API_URL') || 'https://api.credentis.app/api';
-    this.frontendUrl = this.config.get<string>('FRONTEND_URL') || 'https://credentis.app';
+    this.frontendUrl = (this.config.get<string>('FRONTEND_URL') || 'https://credentis.app').split(',')[0].trim();
   }
 
   // ─── Create ──────────────────────────────────────────

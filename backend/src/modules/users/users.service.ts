@@ -48,7 +48,7 @@ export class UsersService {
 
     // Send invite email with sign-in link
     const frontendUrl =
-      this.config.get<string>('FRONTEND_URL') || 'https://credentis.app';
+      (this.config.get<string>('FRONTEND_URL') || 'https://credentis.app').split(',')[0].trim();
     const signInUrl = `${frontendUrl}/sign-in`;
     const roleName = dto.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 

@@ -32,7 +32,7 @@ export class CliniciansService {
     @Inject(forwardRef(() => EmailSettingsService)) private emailSettings: EmailSettingsService,
     private config: ConfigService,
   ) {
-    this.frontendUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    this.frontendUrl = (this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000').split(',')[0].trim();
   }
 
   /**
