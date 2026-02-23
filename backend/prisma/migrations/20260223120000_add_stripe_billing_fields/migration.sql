@@ -1,4 +1,9 @@
+-- CreateEnum
+CREATE TYPE "PlanTier" AS ENUM ('starter', 'growth', 'pro');
+
 -- AlterTable
+ALTER TABLE "organizations" ADD COLUMN "plan_tier" "PlanTier" NOT NULL DEFAULT 'starter';
+ALTER TABLE "organizations" ADD COLUMN "plan_flags" JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE "organizations" ADD COLUMN "stripe_customer_id" TEXT;
 ALTER TABLE "organizations" ADD COLUMN "stripe_subscription_id" TEXT;
 ALTER TABLE "organizations" ADD COLUMN "billing_email" TEXT;
