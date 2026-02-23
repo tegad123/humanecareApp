@@ -30,43 +30,6 @@ import {
   type PaymentMethod,
 } from '@/lib/api/billing';
 
-/* ── Plan metadata ── */
-
-const PLAN_DETAILS: Record<
-  string,
-  { name: string; price: string; features: string[] }
-> = {
-  starter: {
-    name: 'Starter',
-    price: 'Free',
-    features: ['Up to 10 clinicians', 'Basic compliance tracking'],
-  },
-  growth: {
-    name: 'Growth',
-    price: '$99/mo',
-    features: [
-      'Up to 50 clinicians',
-      'Advanced compliance tracking',
-      'SMS reminders',
-    ],
-  },
-  pro: {
-    name: 'Pro',
-    price: '$249/mo',
-    features: [
-      'Unlimited clinicians',
-      'AI document intelligence',
-      'Priority support',
-    ],
-  },
-};
-
-const PLAN_PRICE_IDS: Record<string, string> = {
-  starter: process.env.NEXT_PUBLIC_STRIPE_STARTER_PRICE_ID || '',
-  growth: process.env.NEXT_PUBLIC_STRIPE_GROWTH_PRICE_ID || '',
-  pro: process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID || '',
-};
-
 /* ── Helpers ── */
 
 function formatDate(timestamp: number) {
@@ -97,7 +60,7 @@ export default function BillingPage() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
 
   const success = searchParams.get('success') === 'true';
@@ -124,18 +87,18 @@ export default function BillingPage() {
     load();
   }, [getToken]);
 
-  async function handleUpgrade(tier: string) {
-    const priceId = PLAN_PRICE_IDS[tier];
-    if (!priceId) return;
+  const isPaid =
+    subscription?.planTier !== 'starter' && subscription?.planTier != null;
 
-    setCheckoutLoading(tier);
+  async function handleSubscribe() {
+    setCheckoutLoading(true);
     try {
       const token = await getToken();
-      const { url } = await createCheckoutSession(token, priceId);
+      const { url } = await createCheckoutSession(token);
       window.location.href = url;
     } catch (err: any) {
       setError(err.message || 'Failed to start checkout');
-      setCheckoutLoading(null);
+      setCheckoutLoading(false);
     }
   }
 
@@ -168,8 +131,6 @@ export default function BillingPage() {
     );
   }
 
-  const currentTier = subscription?.planTier || 'starter';
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -185,7 +146,7 @@ export default function BillingPage() {
         <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-4">
           <CheckCircle className="h-5 w-5 text-green-600 shrink-0" />
           <p className="text-sm font-medium text-green-800">
-            Your subscription has been updated successfully.
+            Your subscription has been activated successfully.
           </p>
         </div>
       )}
@@ -206,13 +167,11 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* ── Current Plan ── */}
+      {/* ── Plan Comparison ── */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-900">
-              Current Plan
-            </h2>
+            <h2 className="text-sm font-semibold text-slate-900">Your Plan</h2>
             {subscription?.subscription && (
               <p className="text-xs text-slate-400">
                 {subscription.subscription.cancelAtPeriodEnd
@@ -223,64 +182,95 @@ export default function BillingPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {(['starter', 'growth', 'pro'] as const).map((tier) => {
-              const detail = PLAN_DETAILS[tier];
-              const isCurrent = tier === currentTier;
-              return (
-                <div
-                  key={tier}
-                  className={`rounded-lg border p-4 ${
-                    isCurrent
-                      ? 'border-primary-300 bg-primary-50 ring-1 ring-primary-200'
-                      : 'border-slate-200'
-                  }`}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Free Plan */}
+            <div
+              className={`rounded-lg border p-5 ${
+                !isPaid
+                  ? 'border-primary-300 bg-primary-50 ring-1 ring-primary-200'
+                  : 'border-slate-200'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <p className="font-semibold text-slate-900">Free</p>
+                {!isPaid && <Badge variant="info">Current</Badge>}
+              </div>
+              <p className="text-2xl font-bold text-slate-900 mb-4">$0</p>
+              <ul className="space-y-2 mb-5">
+                <li className="text-sm text-slate-600 flex items-start gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                  Up to 3 clinicians
+                </li>
+                <li className="text-sm text-slate-600 flex items-start gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                  Basic compliance tracking
+                </li>
+                <li className="text-sm text-slate-600 flex items-start gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                  Document management
+                </li>
+              </ul>
+              {!isPaid ? (
+                <Button size="sm" variant="secondary" disabled className="w-full">
+                  Current Plan
+                </Button>
+              ) : (
+                <div />
+              )}
+            </div>
+
+            {/* Paid Plan */}
+            <div
+              className={`rounded-lg border p-5 ${
+                isPaid
+                  ? 'border-primary-300 bg-primary-50 ring-1 ring-primary-200'
+                  : 'border-slate-200'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <p className="font-semibold text-slate-900">Credentis</p>
+                {isPaid && <Badge variant="success">Active</Badge>}
+              </div>
+              <p className="text-2xl font-bold text-slate-900 mb-4">
+                $499<span className="text-sm font-normal text-slate-500">/mo</span>
+              </p>
+              <ul className="space-y-2 mb-5">
+                <li className="text-sm text-slate-600 flex items-start gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                  Unlimited clinicians
+                </li>
+                <li className="text-sm text-slate-600 flex items-start gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                  Full compliance suite
+                </li>
+                <li className="text-sm text-slate-600 flex items-start gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                  Priority support
+                </li>
+              </ul>
+              {isPaid ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="w-full"
+                  onClick={handleManageBilling}
+                  loading={portalLoading}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="font-semibold text-slate-900">
-                      {detail.name}
-                    </p>
-                    {isCurrent && (
-                      <Badge variant="info">Current</Badge>
-                    )}
-                  </div>
-                  <p className="text-lg font-bold text-slate-900 mb-3">
-                    {detail.price}
-                  </p>
-                  <ul className="space-y-1.5 mb-4">
-                    {detail.features.map((f) => (
-                      <li
-                        key={f}
-                        className="text-xs text-slate-600 flex items-start gap-1.5"
-                      >
-                        <CheckCircle className="h-3.5 w-3.5 text-green-500 mt-0.5 shrink-0" />
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                  {isCurrent ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled
-                      className="w-full"
-                    >
-                      Current Plan
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant={tier === 'starter' ? 'secondary' : 'primary'}
-                      className="w-full"
-                      loading={checkoutLoading === tier}
-                      onClick={() => handleUpgrade(tier)}
-                    >
-                      {tier === 'starter' ? 'Downgrade' : 'Upgrade'}
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
+                  Manage Subscription
+                  <ExternalLink className="h-3 w-3" />
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  className="w-full"
+                  loading={checkoutLoading}
+                  onClick={handleSubscribe}
+                >
+                  Subscribe
+                </Button>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -368,9 +358,7 @@ export default function BillingPage() {
                     <th className="px-5 py-2.5 font-medium">Date</th>
                     <th className="px-5 py-2.5 font-medium">Amount</th>
                     <th className="px-5 py-2.5 font-medium">Status</th>
-                    <th className="px-5 py-2.5 font-medium text-right">
-                      PDF
-                    </th>
+                    <th className="px-5 py-2.5 font-medium text-right">PDF</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">

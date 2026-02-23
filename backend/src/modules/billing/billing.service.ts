@@ -7,15 +7,15 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { PlanTier } from '../../../generated/prisma/client.js';
 import Stripe from 'stripe';
+
+type PlanTier = 'starter' | 'growth' | 'pro';
 
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
   private readonly stripe: Stripe;
   private readonly frontendUrl: string;
-  private readonly priceToTierMap: Record<string, PlanTier>;
 
   constructor(
     private config: ConfigService,
@@ -28,15 +28,6 @@ export class BillingService {
     )
       .split(',')[0]
       .trim();
-
-    // Map Stripe Price IDs → internal PlanTier enum
-    this.priceToTierMap = {};
-    const starterPrice = this.config.get<string>('STRIPE_STARTER_PRICE_ID');
-    const growthPrice = this.config.get<string>('STRIPE_GROWTH_PRICE_ID');
-    const proPrice = this.config.get<string>('STRIPE_PRO_PRICE_ID');
-    if (starterPrice) this.priceToTierMap[starterPrice] = 'starter';
-    if (growthPrice) this.priceToTierMap[growthPrice] = 'growth';
-    if (proPrice) this.priceToTierMap[proPrice] = 'pro';
   }
 
   /* ── Customer Management ── */
@@ -131,13 +122,17 @@ export class BillingService {
     return result;
   }
 
-  /* ── Checkout Session (New Subscription / Plan Change) ── */
+  /* ── Checkout Session ── */
 
   async createCheckoutSession(
     organizationId: string,
-    priceId: string,
     userEmail: string,
   ): Promise<{ url: string }> {
+    const priceId = this.config.get<string>('STRIPE_PRICE_ID');
+    if (!priceId) {
+      throw new InternalServerErrorException('STRIPE_PRICE_ID is not configured');
+    }
+
     const customerId = await this.getOrCreateCustomer(organizationId);
 
     const session = await this.stripe.checkout.sessions.create({
@@ -266,12 +261,6 @@ export class BillingService {
               ? session.subscription
               : session.subscription.id;
 
-          // Fetch subscription to determine the price / plan
-          const sub =
-            await this.stripe.subscriptions.retrieve(subscriptionId);
-          const priceId = sub.items.data[0]?.price.id;
-          const tier = priceId ? this.priceToTierMap[priceId] : undefined;
-
           await this.prisma.organization.update({
             where: { id: session.metadata.organizationId },
             data: {
@@ -280,31 +269,19 @@ export class BillingService {
                 typeof session.customer === 'string'
                   ? session.customer
                   : (session.customer?.id ?? undefined),
-              ...(tier && { planTier: tier }),
+              planTier: 'pro',
             },
           });
 
           this.logger.log(
-            `Organization ${session.metadata.organizationId} subscribed to ${tier ?? 'unknown'} (sub: ${subscriptionId})`,
+            `Organization ${session.metadata.organizationId} subscribed (sub: ${subscriptionId})`,
           );
         }
         break;
       }
 
       case 'customer.subscription.updated': {
-        const sub = event.data.object as Stripe.Subscription;
-        const orgId = sub.metadata?.organizationId;
-        if (orgId) {
-          const priceId = sub.items.data[0]?.price.id;
-          const tier = priceId ? this.priceToTierMap[priceId] : undefined;
-          if (tier) {
-            await this.prisma.organization.update({
-              where: { id: orgId },
-              data: { planTier: tier },
-            });
-            this.logger.log(`Organization ${orgId} plan updated to ${tier}`);
-          }
-        }
+        // Subscription still active — keep pro tier
         break;
       }
 

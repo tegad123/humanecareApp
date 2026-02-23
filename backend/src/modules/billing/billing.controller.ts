@@ -2,13 +2,11 @@ import {
   Controller,
   Get,
   Post,
-  Body,
   Headers,
   RawBody,
   HttpCode,
 } from '@nestjs/common';
 import { BillingService } from './billing.service.js';
-import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto.js';
 import { Roles, CurrentUser, Public } from '../../auth/decorators/index.js';
 import type { AuthenticatedUser } from '../../common/interfaces.js';
 
@@ -25,14 +23,10 @@ export class BillingController {
 
   @Post('checkout-session')
   @Roles('super_admin', 'admin')
-  createCheckoutSession(
-    @Body() dto: CreateCheckoutSessionDto,
-    @CurrentUser() user: any,
-  ) {
+  createCheckoutSession(@CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
     return this.billingService.createCheckoutSession(
       authUser.organizationId,
-      dto.priceId,
       authUser.email,
     );
   }

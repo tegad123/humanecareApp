@@ -40,6 +40,21 @@ export class CliniciansService {
    * Uses a $transaction to ensure atomicity.
    */
   async create(dto: CreateClinicianDto, user: AuthenticatedUser) {
+    // Enforce free-tier clinician limit
+    const org = await this.prisma.organization.findUnique({
+      where: { id: user.organizationId },
+    });
+    if (org && org.planTier === 'starter') {
+      const count = await this.prisma.clinician.count({
+        where: { organizationId: user.organizationId },
+      });
+      if (count >= 3) {
+        throw new BadRequestException(
+          'Free plan allows up to 3 clinicians. Please upgrade to add more.',
+        );
+      }
+    }
+
     // Validate template exists and is accessible
     const template = await this.templates.findOne(dto.templateId, user.organizationId);
     if (!template) throw new BadRequestException('Template not found');

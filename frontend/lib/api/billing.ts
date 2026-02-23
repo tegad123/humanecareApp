@@ -51,13 +51,9 @@ export async function fetchSubscription(token: string | null) {
   return clientApiFetch<SubscriptionInfo>('/billing/subscription', token);
 }
 
-export async function createCheckoutSession(
-  token: string | null,
-  priceId: string,
-) {
+export async function createCheckoutSession(token: string | null) {
   return clientApiFetch<{ url: string }>('/billing/checkout-session', token, {
     method: 'POST',
-    body: JSON.stringify({ priceId }),
   });
 }
 
