@@ -6,6 +6,8 @@ import { CredentisLogo } from '@/components/logo';
 import { Sidebar } from '@/components/dashboard/sidebar';
 import { apiFetch } from '@/lib/api';
 
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardLayout({
   children,
 }: {

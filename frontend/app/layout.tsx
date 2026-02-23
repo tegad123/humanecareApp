@@ -18,6 +18,8 @@ const bricolage = Bricolage_Grotesque({
   subsets: ['latin'],
 });
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: {
     default: 'Credentis',
