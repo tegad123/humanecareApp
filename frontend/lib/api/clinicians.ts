@@ -113,7 +113,10 @@ export async function getUploadUrl(
 }
 
 export async function getDownloadUrl(token: string | null, key: string) {
-  return clientApiFetch<{ url: string }>(`/storage/download-url/${key}`, token);
+  return clientApiFetch<{ url: string }>(
+    `/storage/download-url?key=${encodeURIComponent(key)}`,
+    token,
+  );
 }
 
 export async function getLinkedDocumentUrl(

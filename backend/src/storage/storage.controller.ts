@@ -3,7 +3,7 @@ import {
   Post,
   Get,
   Body,
-  Param,
+  Query,
   BadRequestException,
 } from '@nestjs/common';
 import { StorageService } from './storage.service.js';
@@ -33,12 +33,15 @@ export class StorageController {
     });
   }
 
-  @Get('download-url/*key')
+  @Get('download-url')
   async getDownloadUrl(
     @CurrentUser() user: any,
-    @Param('key') key: string,
+    @Query('key') key: string,
   ) {
     const authUser = user as AuthenticatedUser;
+    if (!key) {
+      throw new BadRequestException('Missing required query parameter: key');
+    }
     // Ensure the key belongs to the user's organization
     if (!key.startsWith(authUser.organizationId + '/')) {
       throw new BadRequestException('Access denied to this file');
