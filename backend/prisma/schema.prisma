@@ -68,12 +68,15 @@ enum PlanTier {
 // ─── Organizations ──────────────────────────────────────
 
 model Organization {
-  id        String   @id @default(uuid())
-  name      String
-  planTier  PlanTier @default(starter) @map("plan_tier")
-  planFlags Json     @default("{}") @map("plan_flags")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id                   String   @id @default(uuid())
+  name                 String
+  planTier             PlanTier @default(starter) @map("plan_tier")
+  planFlags            Json     @default("{}") @map("plan_flags")
+  stripeCustomerId     String?  @unique @map("stripe_customer_id")
+  stripeSubscriptionId String?  @unique @map("stripe_subscription_id")
+  billingEmail         String?  @map("billing_email")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
   users                   User[]
   clinicians              Clinician[]
