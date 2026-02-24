@@ -1,15 +1,16 @@
--- CreateEnum
-CREATE TYPE "PlanTier" AS ENUM ('starter', 'growth', 'pro');
+-- CreateEnum (idempotent — survives partial prior run)
+DO $$ BEGIN
+  CREATE TYPE "PlanTier" AS ENUM ('starter', 'growth', 'pro');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- AlterTable
-ALTER TABLE "organizations" ADD COLUMN "plan_tier" "PlanTier" NOT NULL DEFAULT 'starter';
-ALTER TABLE "organizations" ADD COLUMN "plan_flags" JSONB NOT NULL DEFAULT '{}';
-ALTER TABLE "organizations" ADD COLUMN "stripe_customer_id" TEXT;
-ALTER TABLE "organizations" ADD COLUMN "stripe_subscription_id" TEXT;
-ALTER TABLE "organizations" ADD COLUMN "billing_email" TEXT;
+-- AlterTable (idempotent)
+ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "plan_tier" "PlanTier" NOT NULL DEFAULT 'starter';
+ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "plan_flags" JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "stripe_customer_id" TEXT;
+ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "stripe_subscription_id" TEXT;
+ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "billing_email" TEXT;
 
--- CreateIndex
-CREATE UNIQUE INDEX "organizations_stripe_customer_id_key" ON "organizations"("stripe_customer_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "organizations_stripe_subscription_id_key" ON "organizations"("stripe_subscription_id");
+-- CreateIndex (idempotent)
+CREATE UNIQUE INDEX IF NOT EXISTS "organizations_stripe_customer_id_key" ON "organizations"("stripe_customer_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "organizations_stripe_subscription_id_key" ON "organizations"("stripe_subscription_id");

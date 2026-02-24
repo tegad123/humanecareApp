@@ -8,7 +8,7 @@
   "scripts": {
     "build": "npx prisma generate && nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start": "npx prisma generate && npx prisma migrate deploy && nest start",
+    "start": "npx prisma generate && npx prisma migrate resolve --rolled-back 20260223120000_add_stripe_billing_fields 2>/dev/null; npx prisma migrate deploy && nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
