@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -154,5 +155,87 @@ export class UsersService {
       where: { id: user.id },
       data: { clerkUserId },
     });
+  }
+
+  async updateRole(
+    targetUserId: string,
+    newRole: string,
+    actingUser: { id: string; organizationId: string; role: string },
+  ) {
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+    if (!target) throw new NotFoundException('User not found');
+
+    // Must be same org
+    if (target.organizationId !== actingUser.organizationId) {
+      throw new ForbiddenException('Cannot modify users outside your organization');
+    }
+
+    // Cannot change your own role
+    if (target.id === actingUser.id) {
+      throw new ForbiddenException('Cannot change your own role');
+    }
+
+    // Only super_admin can assign super_admin role
+    if (newRole === 'super_admin' && actingUser.role !== 'super_admin') {
+      throw new ForbiddenException('Only super admins can promote to super admin');
+    }
+
+    // Admin cannot change another admin or super_admin
+    if (
+      actingUser.role === 'admin' &&
+      (target.role === 'super_admin' || target.role === 'admin')
+    ) {
+      throw new ForbiddenException('Admins cannot modify other admins or super admins');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: { role: newRole as Role },
+      select: { id: true, email: true, name: true, role: true, createdAt: true },
+    });
+
+    this.logger.log(
+      `User ${actingUser.id} changed role of ${target.email} from ${target.role} to ${newRole}`,
+    );
+
+    return updated;
+  }
+
+  async remove(
+    targetUserId: string,
+    actingUser: { id: string; organizationId: string; role: string },
+  ) {
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+    if (!target) throw new NotFoundException('User not found');
+
+    // Must be same org
+    if (target.organizationId !== actingUser.organizationId) {
+      throw new ForbiddenException('Cannot remove users outside your organization');
+    }
+
+    // Cannot remove yourself
+    if (target.id === actingUser.id) {
+      throw new ForbiddenException('Cannot remove yourself');
+    }
+
+    // Admin cannot remove another admin or super_admin
+    if (
+      actingUser.role === 'admin' &&
+      (target.role === 'super_admin' || target.role === 'admin')
+    ) {
+      throw new ForbiddenException('Admins cannot remove other admins or super admins');
+    }
+
+    await this.prisma.user.delete({ where: { id: targetUserId } });
+
+    this.logger.log(
+      `User ${actingUser.id} removed team member ${target.email} (${target.role})`,
+    );
+
+    return { message: 'Team member removed' };
   }
 }

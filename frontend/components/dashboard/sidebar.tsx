@@ -9,6 +9,7 @@ import {
   FileText,
   Mail,
   CreditCard,
+  Settings,
   Menu,
   X,
 } from 'lucide-react';
@@ -21,6 +22,7 @@ const navItems = [
   { href: '/dashboard/email-settings', label: 'Email Settings', icon: Mail },
   { href: '/dashboard/audit-logs', label: 'Audit Logs', icon: FileText },
   { href: '/dashboard/billing', label: 'Billing', icon: CreditCard },
+  { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 
 export function Sidebar() {
