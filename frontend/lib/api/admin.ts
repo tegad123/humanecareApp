@@ -239,6 +239,23 @@ export async function fetchExpiringItems(
   );
 }
 
+/* ── File Export ── */
+
+export interface ClinicianFile {
+  label: string;
+  section: string;
+  fileName: string;
+  mimeType: string | null;
+  downloadUrl: string;
+}
+
+export async function fetchClinicianFiles(token: string | null, clinicianId: string) {
+  return clientApiFetch<{ clinicianName: string; files: ClinicianFile[] }>(
+    `/clinicians/${clinicianId}/files`,
+    token,
+  );
+}
+
 /* ── Audit Logs ── */
 
 export async function fetchAuditLogs(

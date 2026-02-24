@@ -6,9 +6,10 @@ import { ChecklistTemplatesModule } from '../checklist-templates/checklist-templ
 import { ChecklistItemsModule } from '../checklist-items/checklist-items.module.js';
 import { JobsModule } from '../../jobs/jobs.module.js';
 import { EmailSettingsModule } from '../email-settings/email-settings.module.js';
+import { StorageModule } from '../../storage/storage.module.js';
 
 @Module({
-  imports: [ChecklistTemplatesModule, forwardRef(() => ChecklistItemsModule), forwardRef(() => JobsModule), EmailSettingsModule],
+  imports: [ChecklistTemplatesModule, forwardRef(() => ChecklistItemsModule), forwardRef(() => JobsModule), EmailSettingsModule, StorageModule],
   controllers: [CliniciansController],
   providers: [CliniciansService, ReadyToStaffService],
   exports: [CliniciansService, ReadyToStaffService],

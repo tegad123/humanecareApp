@@ -13,6 +13,7 @@ import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
 import { ChecklistTemplatesService } from '../checklist-templates/checklist-templates.service.js';
 import { EmailService } from '../../jobs/email.service.js';
 import { EmailSettingsService } from '../email-settings/email-settings.service.js';
+import { StorageService } from '../../storage/storage.service.js';
 import { CreateClinicianDto } from './dto/create-clinician.dto.js';
 import { UpdateClinicianDto } from './dto/update-clinician.dto.js';
 import type { AuthenticatedUser } from '../../common/interfaces.js';
@@ -31,6 +32,7 @@ export class CliniciansService {
     @Inject(forwardRef(() => EmailService)) private emailService: EmailService,
     @Inject(forwardRef(() => EmailSettingsService)) private emailSettings: EmailSettingsService,
     private config: ConfigService,
+    private storage: StorageService,
   ) {
     this.frontendUrl = (this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000').split(',')[0].trim();
   }
@@ -533,6 +535,45 @@ export class CliniciansService {
     });
 
     return updated;
+  }
+
+  // ── File Export ────────────────────────────────────────────
+
+  /**
+   * Get all uploaded files for a clinician with presigned download URLs.
+   */
+  async getFiles(clinicianId: string, organizationId: string) {
+    const clinician = await this.findOne(clinicianId, organizationId);
+
+    const items = await this.prisma.clinicianChecklistItem.findMany({
+      where: {
+        clinicianId,
+        organizationId,
+        docStoragePath: { not: null },
+      },
+      include: {
+        itemDefinition: { select: { label: true, section: true } },
+      },
+      orderBy: { itemDefinition: { sortOrder: 'asc' } },
+    });
+
+    const files = await Promise.all(
+      items.map(async (item) => {
+        const { url } = await this.storage.getDownloadUrl(item.docStoragePath!);
+        return {
+          label: item.itemDefinition.label,
+          section: item.itemDefinition.section,
+          fileName: item.docOriginalName || 'document',
+          mimeType: item.docMimeType,
+          downloadUrl: url,
+        };
+      }),
+    );
+
+    return {
+      clinicianName: `${clinician.firstName} ${clinician.lastName}`,
+      files,
+    };
   }
 
   // ── Helpers ────────────────────────────────────────────────

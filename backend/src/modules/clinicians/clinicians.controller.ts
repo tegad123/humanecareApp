@@ -189,6 +189,13 @@ export class CliniciansController {
     return this.cliniciansService.getProgress(id, authUser.organizationId);
   }
 
+  @Get(':id/files')
+  @Roles('super_admin', 'admin', 'recruiter', 'compliance')
+  getFiles(@Param('id') id: string, @CurrentUser() user: any) {
+    const authUser = user as AuthenticatedUser;
+    return this.cliniciansService.getFiles(id, authUser.organizationId);
+  }
+
   @Get(':id/notes')
   @Roles('super_admin', 'admin', 'recruiter', 'compliance')
   getNotes(@Param('id') id: string, @CurrentUser() user: any) {

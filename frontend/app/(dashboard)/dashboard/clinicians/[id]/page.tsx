@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   FileText,
   Download,
+  FolderDown,
   Eye,
   PenTool,
 } from 'lucide-react';
@@ -41,12 +42,14 @@ import {
   fetchNotes,
   reviewChecklistItem,
   resendClinicianInvite,
+  fetchClinicianFiles,
   type ClinicianWithProgress,
   type ChecklistItem,
   type ClinicianProgress,
   type InternalNote,
 } from '@/lib/api/admin';
 import { getDownloadUrl } from '@/lib/api/clinicians';
+import JSZip from 'jszip';
 
 function formatStatus(s: string) {
   return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -84,6 +87,9 @@ export default function ClinicianDetailPage() {
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
 
+  // Download all files
+  const [downloadingAll, setDownloadingAll] = useState(false);
+
   const handleResendInvite = async () => {
     setResending(true);
     setResendSuccess(false);
@@ -96,6 +102,54 @@ export default function ClinicianDetailPage() {
       setError(err.message || 'Failed to resend invite');
     } finally {
       setResending(false);
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    setDownloadingAll(true);
+    setError(null);
+    try {
+      const token = await getToken();
+      const { clinicianName, files } = await fetchClinicianFiles(token, id);
+
+      if (files.length === 0) {
+        setError('No files to download for this clinician.');
+        setDownloadingAll(false);
+        return;
+      }
+
+      const zip = new JSZip();
+
+      // Fetch all files in parallel and add to ZIP
+      await Promise.all(
+        files.map(async (file) => {
+          try {
+            const res = await fetch(file.downloadUrl);
+            const blob = await res.blob();
+            // Organize by section folder, use label + original filename
+            const safeName = file.fileName.replace(/[/\\?%*:|"<>]/g, '_');
+            const safeSection = file.section.replace(/[/\\?%*:|"<>]/g, '_');
+            zip.file(`${safeSection}/${file.label} - ${safeName}`, blob);
+          } catch {
+            // Skip files that fail to download
+          }
+        }),
+      );
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const safeName = clinicianName.replace(/\s+/g, '_');
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safeName}_files.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err.message || 'Failed to download files');
+    } finally {
+      setDownloadingAll(false);
     }
   };
 
@@ -206,23 +260,36 @@ export default function ClinicianDetailPage() {
           </div>
         </div>
 
-        {/* Resend Invite — show only if clinician hasn't accepted yet */}
-        {!clinician.clerkUserId && (
-          <div className="flex items-center gap-2">
-            {resendSuccess && (
-              <span className="text-xs text-success-600 font-medium">Invite sent!</span>
-            )}
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleResendInvite}
-              loading={resending}
-            >
-              <Mail className="h-4 w-4" />
-              Resend Invite
-            </Button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Download All Files */}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleDownloadAll}
+            loading={downloadingAll}
+          >
+            <FolderDown className="h-4 w-4" />
+            {downloadingAll ? 'Zipping...' : 'Download All Files'}
+          </Button>
+
+          {/* Resend Invite — show only if clinician hasn't accepted yet */}
+          {!clinician.clerkUserId && (
+            <>
+              {resendSuccess && (
+                <span className="text-xs text-success-600 font-medium">Invite sent!</span>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleResendInvite}
+                loading={resending}
+              >
+                <Mail className="h-4 w-4" />
+                Resend Invite
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Override panel */}
