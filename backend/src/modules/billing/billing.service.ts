@@ -14,20 +14,33 @@ type PlanTier = 'starter' | 'growth' | 'pro';
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
-  private readonly stripe: Stripe;
+  private readonly stripe: Stripe | null;
   private readonly frontendUrl: string;
 
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
   ) {
-    this.stripe = new Stripe(this.config.get<string>('STRIPE_SECRET_KEY') || '');
+    const stripeKey = this.config.get<string>('STRIPE_SECRET_KEY');
+    if (stripeKey) {
+      this.stripe = new Stripe(stripeKey);
+    } else {
+      this.logger.warn('STRIPE_SECRET_KEY is not configured — billing endpoints will be unavailable');
+      this.stripe = null;
+    }
 
     this.frontendUrl = (
       this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000'
     )
       .split(',')[0]
       .trim();
+  }
+
+  private getStripe(): Stripe {
+    if (!this.stripe) {
+      throw new InternalServerErrorException('Stripe is not configured');
+    }
+    return this.stripe;
   }
 
   /* ── Customer Management ── */
@@ -40,7 +53,7 @@ export class BillingService {
 
     if (org.stripeCustomerId) return org.stripeCustomerId;
 
-    const customer = await this.stripe.customers.create({
+    const customer = await this.getStripe().customers.create({
       name: org.name,
       email: org.billingEmail ?? undefined,
       metadata: { organizationId: org.id },
@@ -90,7 +103,7 @@ export class BillingService {
 
     if (org.stripeSubscriptionId) {
       try {
-        const sub = await this.stripe.subscriptions.retrieve(
+        const sub = await this.getStripe().subscriptions.retrieve(
           org.stripeSubscriptionId,
         );
         result.subscription = {
@@ -135,7 +148,7 @@ export class BillingService {
 
     const customerId = await this.getOrCreateCustomer(organizationId);
 
-    const session = await this.stripe.checkout.sessions.create({
+    const session = await this.getStripe().checkout.sessions.create({
       customer: customerId,
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
@@ -163,7 +176,7 @@ export class BillingService {
   ): Promise<{ url: string }> {
     const customerId = await this.getOrCreateCustomer(organizationId);
 
-    const session = await this.stripe.billingPortal.sessions.create({
+    const session = await this.getStripe().billingPortal.sessions.create({
       customer: customerId,
       return_url: `${this.frontendUrl}/dashboard/billing`,
     });
@@ -180,7 +193,7 @@ export class BillingService {
     if (!org) throw new NotFoundException('Organization not found');
     if (!org.stripeCustomerId) return [];
 
-    const invoices = await this.stripe.invoices.list({
+    const invoices = await this.getStripe().invoices.list({
       customer: org.stripeCustomerId,
       limit: 24,
     });
@@ -209,7 +222,7 @@ export class BillingService {
     if (!org) throw new NotFoundException('Organization not found');
     if (!org.stripeCustomerId) return [];
 
-    const methods = await this.stripe.paymentMethods.list({
+    const methods = await this.getStripe().paymentMethods.list({
       customer: org.stripeCustomerId,
       type: 'card',
     });
@@ -234,7 +247,7 @@ export class BillingService {
 
     let event: Stripe.Event;
     try {
-      event = this.stripe.webhooks.constructEvent(
+      event = this.getStripe().webhooks.constructEvent(
         payload,
         signature,
         webhookSecret,
