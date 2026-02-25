@@ -90,7 +90,8 @@ export default function BillingPage() {
     subscription?.planTier !== 'starter' && subscription?.planTier != null;
 
   function handleSubscribe() {
-    window.location.href = 'https://buy.stripe.com/9B614n8Mhfl508P1ggcZa00';
+    const orgId = subscription?.organizationId || '';
+    window.location.href = `https://buy.stripe.com/9B614n8Mhfl508P1ggcZa00?client_reference_id=${orgId}`;
   }
 
   async function handleManageBilling() {

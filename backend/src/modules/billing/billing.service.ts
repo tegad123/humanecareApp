@@ -76,6 +76,7 @@ export class BillingService {
     if (!org) throw new NotFoundException('Organization not found');
 
     const result: {
+      organizationId: string;
       planTier: PlanTier;
       stripeSubscriptionId: string | null;
       billingEmail: string | null;
@@ -95,6 +96,7 @@ export class BillingService {
         }[];
       } | null;
     } = {
+      organizationId,
       planTier: org.planTier,
       stripeSubscriptionId: org.stripeSubscriptionId,
       billingEmail: org.billingEmail,
@@ -264,18 +266,18 @@ export class BillingService {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-        if (
-          session.mode === 'subscription' &&
-          session.subscription &&
-          session.metadata?.organizationId
-        ) {
+        // Support both API checkout (metadata) and Payment Links (client_reference_id)
+        const orgId =
+          session.metadata?.organizationId || session.client_reference_id;
+
+        if (session.mode === 'subscription' && session.subscription && orgId) {
           const subscriptionId =
             typeof session.subscription === 'string'
               ? session.subscription
               : session.subscription.id;
 
           await this.prisma.organization.update({
-            where: { id: session.metadata.organizationId },
+            where: { id: orgId },
             data: {
               stripeSubscriptionId: subscriptionId,
               stripeCustomerId:
@@ -286,8 +288,19 @@ export class BillingService {
             },
           });
 
+          // Store orgId on the subscription metadata for cancel events
+          try {
+            await this.getStripe().subscriptions.update(subscriptionId, {
+              metadata: { organizationId: orgId },
+            });
+          } catch {
+            this.logger.warn(
+              `Failed to set metadata on subscription ${subscriptionId}`,
+            );
+          }
+
           this.logger.log(
-            `Organization ${session.metadata.organizationId} subscribed (sub: ${subscriptionId})`,
+            `Organization ${orgId} subscribed (sub: ${subscriptionId})`,
           );
         }
         break;

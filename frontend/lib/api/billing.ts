@@ -3,6 +3,7 @@ import { clientApiFetch } from '../api-client';
 /* ── Types ── */
 
 export interface SubscriptionInfo {
+  organizationId: string;
   planTier: 'starter' | 'growth' | 'pro';
   stripeSubscriptionId: string | null;
   billingEmail: string | null;
