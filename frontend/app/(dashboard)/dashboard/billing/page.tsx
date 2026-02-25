@@ -23,7 +23,6 @@ import {
   fetchSubscription,
   fetchInvoices,
   fetchPaymentMethods,
-  createCheckoutSession,
   createPortalSession,
   type SubscriptionInfo,
   type Invoice,
@@ -90,16 +89,8 @@ export default function BillingPage() {
   const isPaid =
     subscription?.planTier !== 'starter' && subscription?.planTier != null;
 
-  async function handleSubscribe() {
-    setCheckoutLoading(true);
-    try {
-      const token = await getToken();
-      const { url } = await createCheckoutSession(token);
-      window.location.href = url;
-    } catch (err: any) {
-      setError(err.message || 'Failed to start checkout');
-      setCheckoutLoading(false);
-    }
+  function handleSubscribe() {
+    window.location.href = 'https://buy.stripe.com/9B614n8Mhfl508P1ggcZa00';
   }
 
   async function handleManageBilling() {
