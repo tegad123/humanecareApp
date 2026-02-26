@@ -54,7 +54,7 @@ export default function TemplatesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div data-tour="templates-header">
         <h1 className="text-xl font-semibold text-slate-900">Templates</h1>
         <p className="text-sm text-slate-500 mt-1">
           Customize checklist templates for your agency. Clone a global template to start editing.
@@ -101,7 +101,7 @@ export default function TemplatesPage() {
       )}
 
       {/* Global Templates */}
-      <div className="space-y-3">
+      <div data-tour="global-templates" className="space-y-3">
         <h2 className="text-sm font-medium text-slate-700 uppercase tracking-wide">
           Global Templates
         </h2>

@@ -244,6 +244,7 @@ export default function SettingsPage() {
       )}
 
       {/* ── Team Members ── */}
+      <div data-tour="team-members-card">
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -260,6 +261,7 @@ export default function SettingsPage() {
               <Button
                 size="sm"
                 variant="primary"
+                data-tour="invite-member-btn"
                 onClick={() => setInviteOpen(true)}
               >
                 <UserPlus className="h-3.5 w-3.5" />
@@ -403,6 +405,7 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+      </div>
 
       {/* ── Role Descriptions ── */}
       <Card>

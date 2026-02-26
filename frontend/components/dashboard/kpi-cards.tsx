@@ -16,7 +16,7 @@ const cards = [
 
 export function KPICards({ stats }: KPICardsProps) {
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div data-tour="kpi-cards" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
       {cards.map(({ key, label, icon: Icon, color, bg }) => (
         <div
           key={key}

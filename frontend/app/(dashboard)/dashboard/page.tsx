@@ -73,9 +73,12 @@ export default function DashboardOverview() {
       {stats && <KPICards stats={stats} />}
 
       {/* Upcoming Expirations */}
-      <UpcomingExpirations limit={10} />
+      <div data-tour="upcoming-expirations">
+        <UpcomingExpirations limit={10} />
+      </div>
 
       {/* Recent clinicians */}
+      <div data-tour="recent-clinicians">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-900">
@@ -137,6 +140,7 @@ export default function DashboardOverview() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

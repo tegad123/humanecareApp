@@ -160,6 +160,7 @@ export default function BillingPage() {
       )}
 
       {/* ── Plan Comparison ── */}
+      <div data-tour="plan-comparison">
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -266,6 +267,7 @@ export default function BillingPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
 
       {/* ── Payment Methods ── */}
       <Card>

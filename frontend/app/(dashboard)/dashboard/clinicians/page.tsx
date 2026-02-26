@@ -73,7 +73,7 @@ export default function CliniciansListPage() {
             {total} clinician{total !== 1 ? 's' : ''} total
           </p>
         </div>
-        <Link href="/dashboard/clinicians/new">
+        <Link href="/dashboard/clinicians/new" data-tour="add-clinician-btn">
           <Button>
             <Plus className="h-4 w-4" />
             Add Clinician
@@ -82,7 +82,7 @@ export default function CliniciansListPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div data-tour="clinician-search" className="flex flex-wrap gap-3">
         {/* Search */}
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -138,6 +138,7 @@ export default function CliniciansListPage() {
           <p className="text-sm text-slate-500">No clinicians found.</p>
         </Card>
       ) : (
+        <div data-tour="clinician-table">
         <Card>
           <CardContent className="p-0 overflow-x-auto">
             <table className="w-full text-sm">
@@ -185,6 +186,7 @@ export default function CliniciansListPage() {
             </table>
           </CardContent>
         </Card>
+        </div>
       )}
 
       {/* Pagination */}

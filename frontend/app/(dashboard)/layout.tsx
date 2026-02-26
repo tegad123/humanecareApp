@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
 import { CredentisLogo } from '@/components/logo';
-import { Sidebar } from '@/components/dashboard/sidebar';
+import { DashboardClientWrapper } from '@/components/tour/dashboard-client-wrapper';
 import { apiFetch } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
@@ -48,10 +48,7 @@ export default async function DashboardLayout({
       </header>
 
       <div className="flex">
-        <Sidebar />
-        <main className="flex-1 min-w-0 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-6xl">{children}</div>
-        </main>
+        <DashboardClientWrapper>{children}</DashboardClientWrapper>
       </div>
     </div>
   );

@@ -65,6 +65,7 @@ export default function AuditLogsPage() {
         </p>
       </div>
 
+      <div data-tour="audit-log-list">
       {error ? (
         <Card className="p-6 text-center">
           <AlertCircle className="mx-auto h-8 w-8 text-danger-600 mb-2" />
@@ -119,6 +120,7 @@ export default function AuditLogsPage() {
           </CardContent>
         </Card>
       )}
+      </div>
 
       {/* Pagination */}
       {(page > 0 || hasMore) && (

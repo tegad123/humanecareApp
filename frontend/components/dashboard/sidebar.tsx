@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useState } from 'react';
+import { TourTriggerButton } from '@/components/tour/tour-trigger-button';
 
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
@@ -35,7 +36,7 @@ export function Sidebar() {
   };
 
   const navContent = (
-    <nav className="flex flex-col gap-1 px-3 py-4">
+    <nav className="flex flex-col gap-1 px-3 py-4 h-full">
       {navItems.map((item) => {
         const Icon = item.icon;
         const active = isActive(item.href);
@@ -43,6 +44,7 @@ export function Sidebar() {
           <Link
             key={item.href}
             href={item.href}
+            data-tour={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
             onClick={() => setMobileOpen(false)}
             className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
               active
@@ -55,6 +57,9 @@ export function Sidebar() {
           </Link>
         );
       })}
+      <div className="mt-auto pt-4 border-t border-slate-100">
+        <TourTriggerButton />
+      </div>
     </nav>
   );
 

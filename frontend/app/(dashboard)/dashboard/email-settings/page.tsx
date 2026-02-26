@@ -87,7 +87,7 @@ export default function EmailSettingsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={() => setShowPreview(!showPreview)}>
+          <Button size="sm" variant="secondary" data-tour="email-preview" onClick={() => setShowPreview(!showPreview)}>
             <Eye className="h-3.5 w-3.5 mr-1" />
             {showPreview ? 'Hide Preview' : 'Preview'}
           </Button>
@@ -104,7 +104,7 @@ export default function EmailSettingsPage() {
 
       <div className={showPreview ? 'grid grid-cols-2 gap-6' : ''}>
         {/* Settings form */}
-        <div className="space-y-4">
+        <div data-tour="email-form" className="space-y-4">
           <Card>
             <CardContent className="space-y-4">
               <Input
