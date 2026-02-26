@@ -68,6 +68,40 @@ export class ClerkAuthGuard implements CanActivate {
       });
 
       if (clinician) {
+        // Check if there's a pending admin User with the same email.
+        // Admin accounts always take priority over clinician accounts.
+        const pendingAdminUser = await this.prisma.user.findFirst({
+          where: { email: clinician.email, clerkUserId: { startsWith: 'pending_' } },
+        });
+
+        if (pendingAdminUser) {
+          // Auto-link the admin User and unlink the Clinician
+          const updated = await this.prisma.user.update({
+            where: { id: pendingAdminUser.id },
+            data: { clerkUserId },
+          });
+
+          // Clear the clinician's clerkUserId so they can re-invite with a different account
+          await this.prisma.clinician.update({
+            where: { id: clinician.id },
+            data: { clerkUserId: null },
+          });
+
+          const authenticatedUser: AuthenticatedUser = {
+            id: updated.id,
+            organizationId: updated.organizationId,
+            role: updated.role,
+            email: updated.email,
+            clerkUserId: updated.clerkUserId,
+            entityType: 'user',
+          };
+          request.user = authenticatedUser;
+          this.logger.log(
+            `Resolved admin/clinician conflict for ${clinician.email}: prioritized admin role (${updated.role})`,
+          );
+          return true;
+        }
+
         const authenticatedUser: AuthenticatedUser = {
           id: clinician.id,
           organizationId: clinician.organizationId,

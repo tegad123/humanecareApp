@@ -470,6 +470,17 @@ export class CliniciansService {
       throw new ConflictException('This account is already linked to a clinician');
     }
 
+    // Block linking if the clinician's email belongs to an admin/staff User account.
+    // Admin accounts always take priority — the person should sign in as admin instead.
+    const adminUser = await this.prisma.user.findFirst({
+      where: { email: clinician.email },
+    });
+    if (adminUser) {
+      throw new ConflictException(
+        'ADMIN_EMAIL_CONFLICT: This email is associated with an admin account. Please use a different email for clinician onboarding, or sign in to your admin dashboard directly.',
+      );
+    }
+
     const updated = await this.prisma.clinician.update({
       where: { id: clinician.id },
       data: {
