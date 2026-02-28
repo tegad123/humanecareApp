@@ -75,16 +75,17 @@ export class ClerkAuthGuard implements CanActivate {
         });
 
         if (pendingAdminUser) {
-          // Auto-link the admin User and unlink the Clinician
-          const updated = await this.prisma.user.update({
-            where: { id: pendingAdminUser.id },
-            data: { clerkUserId },
-          });
-
-          // Clear the clinician's clerkUserId so they can re-invite with a different account
-          await this.prisma.clinician.update({
-            where: { id: clinician.id },
-            data: { clerkUserId: null },
+          // Atomically link admin User and unlink Clinician to prevent partial state
+          const updated = await this.prisma.$transaction(async (tx) => {
+            const u = await tx.user.update({
+              where: { id: pendingAdminUser.id },
+              data: { clerkUserId },
+            });
+            await tx.clinician.update({
+              where: { id: clinician.id },
+              data: { clerkUserId: null },
+            });
+            return u;
           });
 
           const authenticatedUser: AuthenticatedUser = {

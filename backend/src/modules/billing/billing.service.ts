@@ -16,6 +16,7 @@ export class BillingService {
   private readonly logger = new Logger(BillingService.name);
   private readonly stripe: Stripe | null;
   private readonly frontendUrl: string;
+  private readonly processedEvents = new Set<string>();
 
   constructor(
     private config: ConfigService,
@@ -249,19 +250,27 @@ export class BillingService {
       throw new BadRequestException('No active subscription to cancel');
     }
 
-    const sub = await this.getStripe().subscriptions.update(
-      org.stripeSubscriptionId,
-      { cancel_at_period_end: true },
-    );
+    try {
+      const sub = await this.getStripe().subscriptions.update(
+        org.stripeSubscriptionId,
+        { cancel_at_period_end: true },
+      );
 
-    this.logger.log(
-      `Organization ${organizationId} scheduled subscription cancellation at period end`,
-    );
+      this.logger.log(
+        `Organization ${organizationId} scheduled subscription cancellation at period end`,
+      );
 
-    return {
-      cancelAt: sub.cancel_at,
-      cancelAtPeriodEnd: sub.cancel_at_period_end,
-    };
+      return {
+        cancelAt: sub.cancel_at,
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+      };
+    } catch (err: any) {
+      this.logger.error(`Failed to cancel subscription for org ${organizationId}`, err);
+      if (err.type === 'StripeInvalidRequestError') {
+        throw new BadRequestException('Subscription not found or already canceled in Stripe');
+      }
+      throw new InternalServerErrorException('Failed to cancel subscription. Please try again.');
+    }
   }
 
   async resumeSubscription(organizationId: string) {
@@ -273,19 +282,27 @@ export class BillingService {
       throw new BadRequestException('No subscription to resume');
     }
 
-    const sub = await this.getStripe().subscriptions.update(
-      org.stripeSubscriptionId,
-      { cancel_at_period_end: false },
-    );
+    try {
+      const sub = await this.getStripe().subscriptions.update(
+        org.stripeSubscriptionId,
+        { cancel_at_period_end: false },
+      );
 
-    this.logger.log(
-      `Organization ${organizationId} resumed subscription (cancellation undone)`,
-    );
+      this.logger.log(
+        `Organization ${organizationId} resumed subscription (cancellation undone)`,
+      );
 
-    return {
-      cancelAt: sub.cancel_at,
-      cancelAtPeriodEnd: sub.cancel_at_period_end,
-    };
+      return {
+        cancelAt: sub.cancel_at,
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+      };
+    } catch (err: any) {
+      this.logger.error(`Failed to resume subscription for org ${organizationId}`, err);
+      if (err.type === 'StripeInvalidRequestError') {
+        throw new BadRequestException('Subscription not found or already canceled in Stripe');
+      }
+      throw new InternalServerErrorException('Failed to resume subscription. Please try again.');
+    }
   }
 
   /* ── Webhook Handler ── */
@@ -311,6 +328,19 @@ export class BillingService {
       throw new BadRequestException('Invalid webhook signature');
     }
 
+    // Idempotency: skip already-processed events
+    if (this.processedEvents.has(event.id)) {
+      this.logger.log(`Skipping duplicate webhook event: ${event.id}`);
+      return { received: true };
+    }
+    this.processedEvents.add(event.id);
+
+    // Prevent unbounded growth (keep last 1000 events)
+    if (this.processedEvents.size > 1000) {
+      const first = this.processedEvents.values().next().value;
+      if (first) this.processedEvents.delete(first);
+    }
+
     this.logger.log(`Processing webhook event: ${event.type} (${event.id})`);
 
     switch (event.type) {
@@ -326,17 +356,22 @@ export class BillingService {
               ? session.subscription
               : session.subscription.id;
 
-          await this.prisma.organization.update({
-            where: { id: orgId },
-            data: {
-              stripeSubscriptionId: subscriptionId,
-              stripeCustomerId:
-                typeof session.customer === 'string'
-                  ? session.customer
-                  : (session.customer?.id ?? undefined),
-              planTier: 'pro',
-            },
-          });
+          try {
+            await this.prisma.organization.update({
+              where: { id: orgId },
+              data: {
+                stripeSubscriptionId: subscriptionId,
+                stripeCustomerId:
+                  typeof session.customer === 'string'
+                    ? session.customer
+                    : (session.customer?.id ?? undefined),
+                planTier: 'pro',
+              },
+            });
+          } catch (err) {
+            this.logger.error(`Failed to process checkout for org ${orgId}`, err);
+            break;
+          }
 
           // Store orgId on the subscription metadata for cancel events
           try {
@@ -365,16 +400,20 @@ export class BillingService {
         const sub = event.data.object as Stripe.Subscription;
         const orgId = sub.metadata?.organizationId;
         if (orgId) {
-          await this.prisma.organization.update({
-            where: { id: orgId },
-            data: {
-              planTier: 'starter',
-              stripeSubscriptionId: null,
-            },
-          });
-          this.logger.log(
-            `Organization ${orgId} subscription canceled, downgraded to starter`,
-          );
+          try {
+            await this.prisma.organization.update({
+              where: { id: orgId },
+              data: {
+                planTier: 'starter',
+                stripeSubscriptionId: null,
+              },
+            });
+            this.logger.log(
+              `Organization ${orgId} subscription canceled, downgraded to starter`,
+            );
+          } catch (err) {
+            this.logger.error(`Failed to downgrade org ${orgId} after subscription deletion`, err);
+          }
         }
         break;
       }

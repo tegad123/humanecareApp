@@ -73,6 +73,7 @@ export default function BillingPage() {
   useEffect(() => {
     async function load() {
       try {
+        setError(null);
         const token = await getToken();
         const [subData, invData, pmData] = await Promise.all([
           fetchSubscription(token),
@@ -101,18 +102,22 @@ export default function BillingPage() {
 
   async function handleManageBilling() {
     setPortalLoading(true);
+    setError(null);
     try {
       const token = await getToken();
       const { url } = await createPortalSession(token);
       window.location.href = url;
     } catch (err: any) {
       setError(err.message || 'Failed to open billing portal');
-      setPortalLoading(false);
+    } finally {
+      // Reset after a short delay — if navigation succeeds, this is harmless
+      setTimeout(() => setPortalLoading(false), 3000);
     }
   }
 
   async function handleCancelSubscription() {
     setCancelLoading(true);
+    setError(null);
     try {
       const token = await getToken();
       await apiCancelSubscription(token);
@@ -129,6 +134,7 @@ export default function BillingPage() {
 
   async function handleResumeSubscription() {
     setResumeLoading(true);
+    setError(null);
     try {
       const token = await getToken();
       await apiResumeSubscription(token);
@@ -502,6 +508,7 @@ export default function BillingPage() {
                 size="sm"
                 variant="secondary"
                 onClick={() => setShowCancelConfirm(false)}
+                disabled={cancelLoading}
               >
                 Keep Subscription
               </Button>

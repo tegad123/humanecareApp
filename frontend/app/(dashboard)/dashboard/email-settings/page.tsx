@@ -184,11 +184,22 @@ export default function EmailSettingsPage() {
   );
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function buildPreview(settings: EmailSettings): string {
   const orgName = 'Your Agency';
-  const subject = settings.subject.replace(/\{\{orgName\}\}/g, orgName);
-  const intro = settings.introText.replace(/\{\{orgName\}\}/g, orgName);
-  const sig = settings.signatureBlock.replace(/\{\{orgName\}\}/g, orgName).replace(/\n/g, '<br/>');
+  const subject = escapeHtml(settings.subject).replace(/\{\{orgName\}\}/g, orgName);
+  const intro = escapeHtml(settings.introText).replace(/\{\{orgName\}\}/g, orgName);
+  const sig = escapeHtml(settings.signatureBlock).replace(/\{\{orgName\}\}/g, orgName).replace(/\n/g, '<br/>');
+  const requiredItemsIntro = escapeHtml(settings.requiredItemsIntro);
+  const legalDisclaimer = escapeHtml(settings.legalDisclaimer);
 
   return `
     <div style="font-family: sans-serif; max-width: 500px;">
@@ -198,7 +209,7 @@ function buildPreview(settings: EmailSettings): string {
       <p>Hi Jane Doe,</p>
       <p>${intro}</p>
       ${settings.requiredItemsIntro ? `
-        <p style="font-weight: 600; margin-top: 12px;">${settings.requiredItemsIntro}</p>
+        <p style="font-weight: 600; margin-top: 12px;">${requiredItemsIntro}</p>
         <ul style="color: #334155; padding-left: 20px;">
           <li>State License</li>
           <li>Professional Liability Insurance</li>
@@ -214,7 +225,7 @@ function buildPreview(settings: EmailSettings): string {
       <p style="color: #64748b; font-size: 13px;">${sig}</p>
       ${settings.legalDisclaimer ? `
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 16px 0;"/>
-        <p style="color: #94a3b8; font-size: 11px;">${settings.legalDisclaimer}</p>
+        <p style="color: #94a3b8; font-size: 11px;">${legalDisclaimer}</p>
       ` : ''}
     </div>
   `;
