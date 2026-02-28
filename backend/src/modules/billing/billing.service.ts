@@ -238,6 +238,56 @@ export class BillingService {
     }));
   }
 
+  /* ── Cancel / Resume Subscription ── */
+
+  async cancelSubscription(organizationId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+    if (!org.stripeSubscriptionId) {
+      throw new BadRequestException('No active subscription to cancel');
+    }
+
+    const sub = await this.getStripe().subscriptions.update(
+      org.stripeSubscriptionId,
+      { cancel_at_period_end: true },
+    );
+
+    this.logger.log(
+      `Organization ${organizationId} scheduled subscription cancellation at period end`,
+    );
+
+    return {
+      cancelAt: sub.cancel_at,
+      cancelAtPeriodEnd: sub.cancel_at_period_end,
+    };
+  }
+
+  async resumeSubscription(organizationId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+    if (!org.stripeSubscriptionId) {
+      throw new BadRequestException('No subscription to resume');
+    }
+
+    const sub = await this.getStripe().subscriptions.update(
+      org.stripeSubscriptionId,
+      { cancel_at_period_end: false },
+    );
+
+    this.logger.log(
+      `Organization ${organizationId} resumed subscription (cancellation undone)`,
+    );
+
+    return {
+      cancelAt: sub.cancel_at,
+      cancelAtPeriodEnd: sub.cancel_at_period_end,
+    };
+  }
+
   /* ── Webhook Handler ── */
 
   async handleWebhookEvent(payload: Buffer, signature: string) {

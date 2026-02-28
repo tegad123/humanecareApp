@@ -52,6 +52,20 @@ export class BillingController {
     return this.billingService.listPaymentMethods(authUser.organizationId);
   }
 
+  @Post('cancel-subscription')
+  @Roles('super_admin', 'admin')
+  cancelSubscription(@CurrentUser() user: any) {
+    const authUser = user as AuthenticatedUser;
+    return this.billingService.cancelSubscription(authUser.organizationId);
+  }
+
+  @Post('resume-subscription')
+  @Roles('super_admin', 'admin')
+  resumeSubscription(@CurrentUser() user: any) {
+    const authUser = user as AuthenticatedUser;
+    return this.billingService.resumeSubscription(authUser.organizationId);
+  }
+
   @Post('webhook')
   @Public()
   @HttpCode(200)

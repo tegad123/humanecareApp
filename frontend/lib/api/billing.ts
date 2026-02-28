@@ -71,3 +71,19 @@ export async function fetchInvoices(token: string | null) {
 export async function fetchPaymentMethods(token: string | null) {
   return clientApiFetch<PaymentMethod[]>('/billing/payment-methods', token);
 }
+
+export async function cancelSubscription(token: string | null) {
+  return clientApiFetch<{ cancelAt: number | null; cancelAtPeriodEnd: boolean }>(
+    '/billing/cancel-subscription',
+    token,
+    { method: 'POST' },
+  );
+}
+
+export async function resumeSubscription(token: string | null) {
+  return clientApiFetch<{ cancelAt: number | null; cancelAtPeriodEnd: boolean }>(
+    '/billing/resume-subscription',
+    token,
+    { method: 'POST' },
+  );
+}

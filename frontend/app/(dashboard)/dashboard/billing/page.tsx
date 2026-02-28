@@ -24,6 +24,8 @@ import {
   fetchInvoices,
   fetchPaymentMethods,
   createPortalSession,
+  cancelSubscription as apiCancelSubscription,
+  resumeSubscription as apiResumeSubscription,
   type SubscriptionInfo,
   type Invoice,
   type PaymentMethod,
@@ -61,6 +63,9 @@ export default function BillingPage() {
   const [error, setError] = useState<string | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [resumeLoading, setResumeLoading] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const success = searchParams.get('success') === 'true';
   const canceled = searchParams.get('canceled') === 'true';
@@ -106,6 +111,38 @@ export default function BillingPage() {
     }
   }
 
+  async function handleCancelSubscription() {
+    setCancelLoading(true);
+    try {
+      const token = await getToken();
+      await apiCancelSubscription(token);
+      // Refresh subscription data to show updated state
+      const subData = await fetchSubscription(token);
+      setSubscription(subData);
+      setShowCancelConfirm(false);
+    } catch (err: any) {
+      setError(err.message || 'Failed to cancel subscription');
+    } finally {
+      setCancelLoading(false);
+    }
+  }
+
+  async function handleResumeSubscription() {
+    setResumeLoading(true);
+    try {
+      const token = await getToken();
+      await apiResumeSubscription(token);
+      const subData = await fetchSubscription(token);
+      setSubscription(subData);
+    } catch (err: any) {
+      setError(err.message || 'Failed to resume subscription');
+    } finally {
+      setResumeLoading(false);
+    }
+  }
+
+  const isCanceling = subscription?.subscription?.cancelAtPeriodEnd === true;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -148,6 +185,29 @@ export default function BillingPage() {
           <p className="text-sm font-medium text-amber-800">
             Checkout was canceled. No changes were made.
           </p>
+        </div>
+      )}
+      {isCanceling && (
+        <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+            <p className="text-sm font-medium text-amber-800">
+              Your plan will downgrade to Free
+              {subscription?.subscription?.cancelAt
+                ? ` on ${formatDate(subscription.subscription.cancelAt)}`
+                : ' at the end of your billing period'}
+              . You can resume your subscription before then.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={handleResumeSubscription}
+            loading={resumeLoading}
+            className="shrink-0 ml-4"
+          >
+            Resume
+          </Button>
         </div>
       )}
 
@@ -207,8 +267,19 @@ export default function BillingPage() {
                 <Button size="sm" variant="secondary" disabled className="w-full">
                   Current Plan
                 </Button>
+              ) : isCanceling ? (
+                <Button size="sm" variant="secondary" disabled className="w-full">
+                  Downgrade Pending
+                </Button>
               ) : (
-                <div />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                  onClick={() => setShowCancelConfirm(true)}
+                >
+                  Downgrade to Free
+                </Button>
               )}
             </div>
 
@@ -404,6 +475,49 @@ export default function BillingPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Cancel Confirmation Dialog ── */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
+                <AlertCircle className="h-5 w-5 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900">
+                Cancel Subscription?
+              </h3>
+            </div>
+            <p className="text-sm text-slate-600 mb-2">
+              Are you sure you want to downgrade to the Free plan? At the end of
+              your current billing period:
+            </p>
+            <ul className="text-sm text-slate-600 mb-6 space-y-1 ml-4 list-disc">
+              <li>Clinician limit drops to 3</li>
+              <li>Full compliance suite will be unavailable</li>
+              <li>Priority support will no longer be available</li>
+            </ul>
+            <div className="flex gap-3 justify-end">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setShowCancelConfirm(false)}
+              >
+                Keep Subscription
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                className="bg-red-600 hover:bg-red-700"
+                onClick={handleCancelSubscription}
+                loading={cancelLoading}
+              >
+                Yes, Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
