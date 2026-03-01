@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   createContext,
@@ -7,12 +7,12 @@ import {
   useEffect,
   useCallback,
   type ReactNode,
-} from 'react';
-import { usePathname, useRouter } from 'next/navigation';
-import { pageTours, type TourStep, type PageTour } from '@/lib/tour-steps';
+} from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { pageTours, type TourStep, type PageTour } from "@/lib/tour-steps";
 
-const STORAGE_KEY_COMPLETED = 'credentis_tour_completed';
-const STORAGE_KEY_PAGES = 'credentis_tour_completed_pages';
+const STORAGE_KEY_COMPLETED = "credentis_tour_completed";
+const STORAGE_KEY_PAGES = "credentis_tour_completed_pages";
 
 interface TourContextValue {
   isActive: boolean;
@@ -57,37 +57,93 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // Find the tour for the current page
   const currentPageTour = pageTours.find((t) => t.route === pathname) || null;
   const steps = currentPageTour?.steps || [];
-  const currentStep = isActive && steps[currentStepIndex] ? steps[currentStepIndex] : null;
+  const currentStep =
+    isActive && steps[currentStepIndex] ? steps[currentStepIndex] : null;
+
+  const waitForTourTarget = useCallback(
+    (target: string, timeoutMs = 10_000) => {
+      return new Promise<boolean>((resolve) => {
+        const selector = `[data-tour="${target}"]`;
+        if (document.querySelector(selector)) {
+          resolve(true);
+          return;
+        }
+
+        const intervalMs = 150;
+        const maxAttempts = Math.ceil(timeoutMs / intervalMs);
+        let attempts = 0;
+        const timer = setInterval(() => {
+          attempts += 1;
+          if (document.querySelector(selector)) {
+            clearInterval(timer);
+            resolve(true);
+            return;
+          }
+
+          if (attempts >= maxAttempts) {
+            clearInterval(timer);
+            resolve(false);
+          }
+        }, intervalMs);
+      });
+    },
+    [],
+  );
 
   // Load completion state from localStorage
   useEffect(() => {
     const completed = localStorage.getItem(STORAGE_KEY_COMPLETED);
-    setHasCompletedTour(completed === 'true');
+    setHasCompletedTour(completed === "true");
   }, []);
 
   // Auto-start tour on first visit to /dashboard
   useEffect(() => {
+    let cancelled = false;
     const completed = localStorage.getItem(STORAGE_KEY_COMPLETED);
-    if (!completed && pathname === '/dashboard') {
-      const timer = setTimeout(() => {
+    if (!completed && pathname === "/dashboard" && !isActive && !isFullTour) {
+      const firstTarget = pageTours.find((tour) => tour.route === "/dashboard")
+        ?.steps[0]?.target;
+      if (!firstTarget) {
+        return;
+      }
+
+      void waitForTourTarget(firstTarget).then((isReady) => {
+        if (cancelled || !isReady) {
+          return;
+        }
         setIsActive(true);
         setCurrentStepIndex(0);
         setIsFullTour(true);
-      }, 1500);
-      return () => clearTimeout(timer);
+      });
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, isActive, isFullTour, waitForTourTarget]);
 
   // When navigating during a full tour, auto-continue on the new page
   useEffect(() => {
+    let cancelled = false;
     if (isFullTour && currentPageTour && !isActive) {
-      const timer = setTimeout(() => {
+      const firstTarget = currentPageTour.steps[0]?.target;
+      if (!firstTarget) {
+        return;
+      }
+
+      void waitForTourTarget(firstTarget).then((isReady) => {
+        if (cancelled || !isReady) {
+          return;
+        }
         setIsActive(true);
         setCurrentStepIndex(0);
-      }, 800);
-      return () => clearTimeout(timer);
+      });
     }
-  }, [pathname, isFullTour, currentPageTour]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, isFullTour, currentPageTour, isActive, waitForTourTarget]);
 
   const markPageCompleted = useCallback((route: string) => {
     try {
@@ -103,7 +159,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const markTourCompleted = useCallback(() => {
-    localStorage.setItem(STORAGE_KEY_COMPLETED, 'true');
+    localStorage.setItem(STORAGE_KEY_COMPLETED, "true");
     setHasCompletedTour(true);
   }, []);
 
@@ -126,7 +182,15 @@ export function TourProvider({ children }: { children: ReactNode }) {
         markTourCompleted();
       }
     }
-  }, [currentStepIndex, steps.length, currentPageTour, isFullTour, router, markPageCompleted, markTourCompleted]);
+  }, [
+    currentStepIndex,
+    steps.length,
+    currentPageTour,
+    isFullTour,
+    router,
+    markPageCompleted,
+    markTourCompleted,
+  ]);
 
   const prevStep = useCallback(() => {
     if (currentStepIndex > 0) {
@@ -160,8 +224,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
     setIsFullTour(true);
     setCurrentStepIndex(0);
 
-    if (pathname !== '/dashboard') {
-      router.push('/dashboard');
+    if (pathname !== "/dashboard") {
+      router.push("/dashboard");
       // The useEffect will auto-start when we land on /dashboard
     } else {
       setIsActive(true);

@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useCallback } from 'react';
-import { useAuth } from '@clerk/nextjs';
-import { useParams } from 'next/navigation';
-import Link from 'next/link';
+import { useEffect, useState, useCallback } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 import {
   ArrowLeft,
   Mail,
@@ -20,7 +20,7 @@ import {
   FolderDown,
   Eye,
   PenTool,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   Badge,
   Button,
@@ -30,11 +30,11 @@ import {
   Modal,
   ProgressBar,
   Spinner,
-} from '@/components/ui';
-import { ReviewModal } from '@/components/dashboard/review-modal';
-import { InternalNotes } from '@/components/dashboard/internal-notes';
-import { OverridePanel } from '@/components/dashboard/override-panel';
-import { ExpirationIndicator } from '@/components/dashboard/expiration-indicator';
+} from "@/components/ui";
+import { ReviewModal } from "@/components/dashboard/review-modal";
+import { InternalNotes } from "@/components/dashboard/internal-notes";
+import { OverridePanel } from "@/components/dashboard/override-panel";
+import { ExpirationIndicator } from "@/components/dashboard/expiration-indicator";
 import {
   fetchClinician,
   fetchClinicianChecklist,
@@ -47,22 +47,22 @@ import {
   type ChecklistItem,
   type ClinicianProgress,
   type InternalNote,
-} from '@/lib/api/admin';
-import { getDownloadUrl } from '@/lib/api/clinicians';
-import JSZip from 'jszip';
+} from "@/lib/api/admin";
+import { getDownloadUrl } from "@/lib/api/clinicians";
+import JSZip from "jszip";
 
 function formatStatus(s: string) {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function statusIcon(status: string) {
   switch (status) {
-    case 'approved':
+    case "approved":
       return <CheckCircle2 className="h-4 w-4 text-success-600" />;
-    case 'rejected':
+    case "rejected":
       return <AlertCircle className="h-4 w-4 text-danger-600" />;
-    case 'submitted':
-    case 'pending_review':
+    case "submitted":
+    case "pending_review":
       return <Clock className="h-4 w-4 text-warning-500" />;
     default:
       return <FileText className="h-4 w-4 text-slate-400" />;
@@ -73,7 +73,9 @@ export default function ClinicianDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { getToken } = useAuth();
 
-  const [clinician, setClinician] = useState<ClinicianWithProgress | null>(null);
+  const [clinician, setClinician] = useState<ClinicianWithProgress | null>(
+    null,
+  );
   const [sections, setSections] = useState<Record<string, ChecklistItem[]>>({});
   const [progress, setProgress] = useState<ClinicianProgress | null>(null);
   const [notes, setNotes] = useState<InternalNote[]>([]);
@@ -89,6 +91,7 @@ export default function ClinicianDetailPage() {
 
   // Download all files
   const [downloadingAll, setDownloadingAll] = useState(false);
+  const [downloadWarning, setDownloadWarning] = useState<string | null>(null);
 
   const handleResendInvite = async () => {
     setResending(true);
@@ -99,7 +102,7 @@ export default function ClinicianDetailPage() {
       setResendSuccess(true);
       setTimeout(() => setResendSuccess(false), 3000);
     } catch (err: any) {
-      setError(err.message || 'Failed to resend invite');
+      setError(err.message || "Failed to resend invite");
     } finally {
       setResending(false);
     }
@@ -108,38 +111,48 @@ export default function ClinicianDetailPage() {
   const handleDownloadAll = async () => {
     setDownloadingAll(true);
     setError(null);
+    setDownloadWarning(null);
     try {
       const token = await getToken();
       const { clinicianName, files } = await fetchClinicianFiles(token, id);
 
       if (files.length === 0) {
-        setError('No files to download for this clinician.');
-        setDownloadingAll(false);
+        setDownloadWarning("No files to download for this clinician.");
         return;
       }
 
       const zip = new JSZip();
 
-      // Fetch all files in parallel and add to ZIP
-      await Promise.all(
+      const results = await Promise.allSettled(
         files.map(async (file) => {
-          try {
-            const res = await fetch(file.downloadUrl);
-            const blob = await res.blob();
-            // Organize by section folder, use label + original filename
-            const safeName = file.fileName.replace(/[/\\?%*:|"<>]/g, '_');
-            const safeSection = file.section.replace(/[/\\?%*:|"<>]/g, '_');
-            zip.file(`${safeSection}/${file.label} - ${safeName}`, blob);
-          } catch {
-            // Skip files that fail to download
+          const res = await fetch(file.downloadUrl);
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
           }
+          const blob = await res.blob();
+          // Organize by section folder, use label + original filename
+          const safeName = file.fileName.replace(/[/\\?%*:|"<>]/g, "_");
+          const safeSection = file.section.replace(/[/\\?%*:|"<>]/g, "_");
+          zip.file(`${safeSection}/${file.label} - ${safeName}`, blob);
         }),
       );
 
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const safeName = clinicianName.replace(/\s+/g, '_');
+      const failedCount = results.filter(
+        (result) => result.status === "rejected",
+      ).length;
+      if (failedCount === files.length) {
+        throw new Error("Failed to download files for this clinician.");
+      }
+      if (failedCount > 0) {
+        setDownloadWarning(
+          `${failedCount} file${failedCount === 1 ? "" : "s"} could not be downloaded and were excluded from the ZIP.`,
+        );
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const safeName = clinicianName.replace(/\s+/g, "_");
       const url = URL.createObjectURL(zipBlob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = `${safeName}_files.zip`;
       document.body.appendChild(a);
@@ -147,7 +160,7 @@ export default function ClinicianDetailPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      setError(err.message || 'Failed to download files');
+      setError(err.message || "Failed to download files");
     } finally {
       setDownloadingAll(false);
     }
@@ -167,7 +180,7 @@ export default function ClinicianDetailPage() {
       setProgress(prog);
       setNotes(notesData);
     } catch (err: any) {
-      setError(err.message || 'Failed to load clinician');
+      setError(err.message || "Failed to load clinician");
     } finally {
       setLoading(false);
     }
@@ -180,7 +193,7 @@ export default function ClinicianDetailPage() {
   const handleApprove = async () => {
     if (!reviewItem) return;
     const token = await getToken();
-    await reviewChecklistItem(token, reviewItem.id, { status: 'approved' });
+    await reviewChecklistItem(token, reviewItem.id, { status: "approved" });
     setReviewItem(null);
     load(); // Refresh
   };
@@ -189,7 +202,7 @@ export default function ClinicianDetailPage() {
     if (!reviewItem) return;
     const token = await getToken();
     await reviewChecklistItem(token, reviewItem.id, {
-      status: 'rejected',
+      status: "rejected",
       rejectionReason: reason,
       rejectionComment: comment,
     });
@@ -204,9 +217,9 @@ export default function ClinicianDetailPage() {
     try {
       const token = await getToken();
       const { url } = await getDownloadUrl(token, key);
-      window.open(url, '_blank');
+      window.open(url, "_blank");
     } catch {
-      setError('Failed to download document. Please try again.');
+      setError("Failed to download document. Please try again.");
     }
   };
 
@@ -222,7 +235,9 @@ export default function ClinicianDetailPage() {
     return (
       <Card className="p-6 text-center">
         <AlertCircle className="mx-auto h-8 w-8 text-danger-600 mb-2" />
-        <p className="text-sm text-slate-600">{error || 'Clinician not found'}</p>
+        <p className="text-sm text-slate-600">
+          {error || "Clinician not found"}
+        </p>
       </Card>
     );
   }
@@ -240,6 +255,13 @@ export default function ClinicianDetailPage() {
         Back to Clinicians
       </Link>
 
+      {downloadWarning && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0" />
+          <p className="text-sm text-amber-800">{downloadWarning}</p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
@@ -255,7 +277,9 @@ export default function ClinicianDetailPage() {
               <Badge status={clinician.status}>
                 {formatStatus(clinician.status)}
               </Badge>
-              <span className="text-sm text-slate-500">{clinician.discipline}</span>
+              <span className="text-sm text-slate-500">
+                {clinician.discipline}
+              </span>
             </div>
           </div>
         </div>
@@ -269,14 +293,16 @@ export default function ClinicianDetailPage() {
             loading={downloadingAll}
           >
             <FolderDown className="h-4 w-4" />
-            {downloadingAll ? 'Zipping...' : 'Download All Files'}
+            {downloadingAll ? "Zipping..." : "Download All Files"}
           </Button>
 
           {/* Resend Invite — show only if clinician hasn't accepted yet */}
           {!clinician.clerkUserId && (
             <>
               {resendSuccess && (
-                <span className="text-xs text-success-600 font-medium">Invite sent!</span>
+                <span className="text-xs text-success-600 font-medium">
+                  Invite sent!
+                </span>
               )}
               <Button
                 variant="secondary"
@@ -306,14 +332,25 @@ export default function ClinicianDetailPage() {
             <CardContent className="space-y-3">
               <InfoRow icon={Mail} label="Email" value={clinician.email} />
               <InfoRow icon={Phone} label="Phone" value={clinician.phone} />
-              <InfoRow icon={Stethoscope} label="Discipline" value={clinician.discipline} />
+              <InfoRow
+                icon={Stethoscope}
+                label="Discipline"
+                value={clinician.discipline}
+              />
               <InfoRow icon={Hash} label="NPI" value={clinician.npi} />
-              <InfoRow icon={MapPin} label="Coverage" value={clinician.coverageArea} />
+              <InfoRow
+                icon={MapPin}
+                label="Coverage"
+                value={clinician.coverageArea}
+              />
               {clinician.assignedRecruiter && (
                 <InfoRow
                   icon={Mail}
                   label="Recruiter"
-                  value={clinician.assignedRecruiter.name || clinician.assignedRecruiter.email}
+                  value={
+                    clinician.assignedRecruiter.name ||
+                    clinician.assignedRecruiter.email
+                  }
                 />
               )}
             </CardContent>
@@ -379,7 +416,11 @@ export default function ClinicianDetailPage() {
                 <CardContent className="p-0">
                   <ul className="divide-y divide-slate-100">
                     {items
-                      .sort((a, b) => a.itemDefinition.sortOrder - b.itemDefinition.sortOrder)
+                      .sort(
+                        (a, b) =>
+                          a.itemDefinition.sortOrder -
+                          b.itemDefinition.sortOrder,
+                      )
                       .map((item) => (
                         <li
                           key={item.id}
@@ -418,7 +459,8 @@ export default function ClinicianDetailPage() {
                             </div>
                             {item.rejectionComment && (
                               <p className="text-xs text-danger-600 mt-1">
-                                Rejected: {item.rejectionReason} — {item.rejectionComment}
+                                Rejected: {item.rejectionReason} —{" "}
+                                {item.rejectionComment}
                               </p>
                             )}
                             {item.signerName && (
@@ -427,7 +469,13 @@ export default function ClinicianDetailPage() {
                                 <span>
                                   Signed by {item.signerName}
                                   {item.signatureTimestamp && (
-                                    <> on {new Date(item.signatureTimestamp).toLocaleDateString()}</>
+                                    <>
+                                      {" "}
+                                      on{" "}
+                                      {new Date(
+                                        item.signatureTimestamp,
+                                      ).toLocaleDateString()}
+                                    </>
                                   )}
                                 </span>
                               </div>
@@ -446,7 +494,9 @@ export default function ClinicianDetailPage() {
                                   <Eye className="h-4 w-4" />
                                 </button>
                                 <button
-                                  onClick={() => handleDownload(item.docStoragePath!)}
+                                  onClick={() =>
+                                    handleDownload(item.docStoragePath!)
+                                  }
                                   className="p-1.5 text-slate-400 hover:text-primary-600 transition"
                                   title="Download document"
                                 >
@@ -454,7 +504,8 @@ export default function ClinicianDetailPage() {
                                 </button>
                               </>
                             )}
-                            {(item.status === 'submitted' || item.status === 'pending_review') && (
+                            {(item.status === "submitted" ||
+                              item.status === "pending_review") && (
                               <Button
                                 size="sm"
                                 variant="secondary"
@@ -542,17 +593,19 @@ function DocumentPreviewModal({
         const { url } = await getDownloadUrl(token, docStoragePath);
         if (!cancelled) setDocUrl(url);
       } catch {
-        if (!cancelled) setDocError('Failed to load document');
+        if (!cancelled) setDocError("Failed to load document");
       } finally {
         if (!cancelled) setDocLoading(false);
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, docStoragePath, getToken]);
 
   const isPreviewable =
-    docMimeType?.startsWith('image/') || docMimeType === 'application/pdf';
+    docMimeType?.startsWith("image/") || docMimeType === "application/pdf";
 
   if (!open) return null;
 
@@ -576,7 +629,7 @@ function DocumentPreviewModal({
           <>
             {isPreviewable ? (
               <div className="rounded-lg border border-slate-200 overflow-hidden">
-                {docMimeType === 'application/pdf' ? (
+                {docMimeType === "application/pdf" ? (
                   <object
                     data={docUrl}
                     type="application/pdf"
@@ -584,7 +637,9 @@ function DocumentPreviewModal({
                   >
                     <div className="flex flex-col items-center justify-center py-8 bg-slate-50">
                       <FileText className="h-6 w-6 text-slate-400 mb-2" />
-                      <p className="text-xs text-slate-500 mb-2">Unable to display PDF inline</p>
+                      <p className="text-xs text-slate-500 mb-2">
+                        Unable to display PDF inline
+                      </p>
                       <a
                         href={docUrl}
                         target="_blank"
@@ -598,7 +653,7 @@ function DocumentPreviewModal({
                 ) : (
                   <img
                     src={docUrl}
-                    alt={docOriginalName || 'Document'}
+                    alt={docOriginalName || "Document"}
                     className="w-full max-h-[450px] object-contain bg-slate-50"
                   />
                 )}
@@ -608,10 +663,10 @@ function DocumentPreviewModal({
                 <FileText className="h-8 w-8 text-slate-400 shrink-0" />
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-700 truncate">
-                    {docOriginalName || 'Document'}
+                    {docOriginalName || "Document"}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {docMimeType || 'Unknown type'} — Preview not available
+                    {docMimeType || "Unknown type"} — Preview not available
                   </p>
                 </div>
               </div>
@@ -624,7 +679,7 @@ function DocumentPreviewModal({
               className="inline-flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 font-medium"
             >
               <Download className="h-4 w-4" />
-              Download {docOriginalName || 'Document'}
+              Download {docOriginalName || "Document"}
             </a>
           </>
         )}
@@ -649,7 +704,7 @@ function InfoRow({
       <Icon className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
       <div>
         <p className="text-xs text-slate-500">{label}</p>
-        <p className="text-sm text-slate-900">{value || '—'}</p>
+        <p className="text-sm text-slate-900">{value || "—"}</p>
       </div>
     </div>
   );

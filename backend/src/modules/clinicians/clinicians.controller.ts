@@ -8,7 +8,9 @@ import {
   Body,
   Query,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { CliniciansService } from './clinicians.service.js';
 import { ReadyToStaffService } from './ready-to-staff.service.js';
 import { ChecklistItemsService } from '../checklist-items/checklist-items.service.js';
@@ -44,16 +46,26 @@ export class CliniciansController {
   @Roles('clinician')
   async getMyChecklist(@CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
-    const clinician = await this.cliniciansService.findByClerkUser(authUser.clerkUserId);
-    return this.checklistItemsService.findByClinician(clinician.id, clinician.organizationId);
+    const clinician = await this.cliniciansService.findByClerkUser(
+      authUser.clerkUserId,
+    );
+    return this.checklistItemsService.findByClinician(
+      clinician.id,
+      clinician.organizationId,
+    );
   }
 
   @Get('me/progress')
   @Roles('clinician')
   async getMyProgress(@CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
-    const clinician = await this.cliniciansService.findByClerkUser(authUser.clerkUserId);
-    return this.cliniciansService.getProgress(clinician.id, clinician.organizationId);
+    const clinician = await this.cliniciansService.findByClerkUser(
+      authUser.clerkUserId,
+    );
+    return this.cliniciansService.getProgress(
+      clinician.id,
+      clinician.organizationId,
+    );
   }
 
   @Get('stats')
@@ -81,12 +93,16 @@ export class CliniciansController {
 
   @Get('invite/:token/validate')
   @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   validateInvite(@Param('token') token: string) {
     return this.cliniciansService.validateInviteToken(token);
   }
 
   @Post('invite/:token/accept')
   @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   acceptInvite(
     @Param('token') token: string,
     @Body('clerkUserId') clerkUserId: string,
@@ -146,10 +162,7 @@ export class CliniciansController {
 
   @Delete(':id/override')
   @Roles('super_admin', 'admin')
-  async clearOverride(
-    @Param('id') id: string,
-    @CurrentUser() user: any,
-  ) {
+  async clearOverride(@Param('id') id: string, @CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
     await this.cliniciansService.findOne(id, authUser.organizationId);
     const newStatus = await this.readyToStaffService.clearOverride(
@@ -180,7 +193,10 @@ export class CliniciansController {
   @Get(':id/checklist')
   getChecklist(@Param('id') id: string, @CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
-    return this.checklistItemsService.findByClinician(id, authUser.organizationId);
+    return this.checklistItemsService.findByClinician(
+      id,
+      authUser.organizationId,
+    );
   }
 
   @Get(':id/progress')
@@ -210,7 +226,11 @@ export class CliniciansController {
     @Body('content') content: string,
     @CurrentUser() user: any,
   ) {
-    return this.cliniciansService.addNote(id, content, user as AuthenticatedUser);
+    return this.cliniciansService.addNote(
+      id,
+      content,
+      user as AuthenticatedUser,
+    );
   }
 
   @Post(':id/resend-invite')

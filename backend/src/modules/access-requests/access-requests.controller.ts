@@ -8,8 +8,10 @@ import {
   Query,
   Res,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AccessRequestsService } from './access-requests.service.js';
 import { CreateAccessRequestDto } from './dto/create-access-request.dto.js';
 import { Public, Roles } from '../../auth/decorators/index.js';
@@ -20,6 +22,8 @@ export class AccessRequestsController {
 
   @Post()
   @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 15 * 60_000 } })
   create(@Body() dto: CreateAccessRequestDto) {
     return this.service.create(dto);
   }
@@ -28,16 +32,18 @@ export class AccessRequestsController {
 
   @Get('approve/:token')
   @Public()
-  async approveByToken(
-    @Param('token') token: string,
-    @Res() res: Response,
-  ) {
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  async approveByToken(@Param('token') token: string, @Res() res: Response) {
     try {
       const result = await this.service.approveByToken(token);
-      res.status(HttpStatus.OK).header('Content-Type', 'text/html').send(
-        this.buildHtmlPage(
-          'Request Approved',
-          `
+      res
+        .status(HttpStatus.OK)
+        .header('Content-Type', 'text/html')
+        .send(
+          this.buildHtmlPage(
+            'Request Approved',
+            `
             <div style="width: 64px; height: 64px; border-radius: 50%; background: #dcfce7; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
                 <path d="M5 12L10 17L19 8" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -55,15 +61,18 @@ export class AccessRequestsController {
             </div>
             <p style="color: #94a3b8; font-size: 13px; margin: 0;">They'll receive a sign-in link to set up their account.</p>
           `,
-        ),
-      );
+          ),
+        );
     } catch (err: any) {
       const message = err.message || 'Something went wrong';
       const status = err.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      res.status(status).header('Content-Type', 'text/html').send(
-        this.buildHtmlPage(
-          'Error',
-          `
+      res
+        .status(status)
+        .header('Content-Type', 'text/html')
+        .send(
+          this.buildHtmlPage(
+            'Error',
+            `
             <div style="width: 64px; height: 64px; border-radius: 50%; background: #fef2f2; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
                 <path d="M18 6L6 18M6 6l12 12" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round"/>
@@ -72,23 +81,25 @@ export class AccessRequestsController {
             <h1 style="color: #1e293b; margin: 0 0 8px; font-size: 24px; font-weight: 700;">Unable to Process</h1>
             <p style="color: #475569; margin: 0; font-size: 15px; line-height: 1.6;">${message}</p>
           `,
-        ),
-      );
+          ),
+        );
     }
   }
 
   @Get('reject/:token')
   @Public()
-  async rejectByToken(
-    @Param('token') token: string,
-    @Res() res: Response,
-  ) {
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  async rejectByToken(@Param('token') token: string, @Res() res: Response) {
     try {
       const result = await this.service.rejectByToken(token);
-      res.status(HttpStatus.OK).header('Content-Type', 'text/html').send(
-        this.buildHtmlPage(
-          'Request Rejected',
-          `
+      res
+        .status(HttpStatus.OK)
+        .header('Content-Type', 'text/html')
+        .send(
+          this.buildHtmlPage(
+            'Request Rejected',
+            `
             <div style="width: 64px; height: 64px; border-radius: 50%; background: #fef2f2; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
                 <path d="M18 6L6 18M6 6l12 12" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round"/>
@@ -101,15 +112,18 @@ export class AccessRequestsController {
             </p>
             <p style="color: #94a3b8; font-size: 13px; margin: 0;">A notification has been sent to the requester.</p>
           `,
-        ),
-      );
+          ),
+        );
     } catch (err: any) {
       const message = err.message || 'Something went wrong';
       const status = err.status || HttpStatus.INTERNAL_SERVER_ERROR;
-      res.status(status).header('Content-Type', 'text/html').send(
-        this.buildHtmlPage(
-          'Error',
-          `
+      res
+        .status(status)
+        .header('Content-Type', 'text/html')
+        .send(
+          this.buildHtmlPage(
+            'Error',
+            `
             <div style="width: 64px; height: 64px; border-radius: 50%; background: #fef2f2; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
                 <path d="M18 6L6 18M6 6l12 12" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round"/>
@@ -118,8 +132,8 @@ export class AccessRequestsController {
             <h1 style="color: #1e293b; margin: 0 0 8px; font-size: 24px; font-weight: 700;">Unable to Process</h1>
             <p style="color: #475569; margin: 0; font-size: 15px; line-height: 1.6;">${message}</p>
           `,
-        ),
-      );
+          ),
+        );
     }
   }
 

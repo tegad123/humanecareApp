@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useAuth } from '@clerk/nextjs';
-import { useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { useSearchParams } from "next/navigation";
 import {
   CreditCard,
   AlertCircle,
@@ -10,7 +10,7 @@ import {
   Download,
   CheckCircle,
   ArrowUpRight,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   Card,
   CardHeader,
@@ -18,7 +18,7 @@ import {
   Spinner,
   Badge,
   Button,
-} from '@/components/ui';
+} from "@/components/ui";
 import {
   fetchSubscription,
   fetchInvoices,
@@ -29,21 +29,21 @@ import {
   type SubscriptionInfo,
   type Invoice,
   type PaymentMethod,
-} from '@/lib/api/billing';
+} from "@/lib/api/billing";
 
 /* ── Helpers ── */
 
 function formatDate(timestamp: number) {
-  return new Date(timestamp * 1000).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+  return new Date(timestamp * 1000).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }
 
 function formatCurrency(amount: number, currency: string) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
     currency: currency.toUpperCase(),
   }).format(amount / 100);
 }
@@ -67,36 +67,37 @@ export default function BillingPage() {
   const [resumeLoading, setResumeLoading] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
-  const success = searchParams.get('success') === 'true';
-  const canceled = searchParams.get('canceled') === 'true';
+  const success = searchParams.get("success") === "true";
+  const canceled = searchParams.get("canceled") === "true";
 
-  useEffect(() => {
-    async function load() {
-      try {
-        setError(null);
-        const token = await getToken();
-        const [subData, invData, pmData] = await Promise.all([
-          fetchSubscription(token),
-          fetchInvoices(token),
-          fetchPaymentMethods(token),
-        ]);
-        setSubscription(subData);
-        setInvoices(invData);
-        setPaymentMethods(pmData);
-      } catch (err: any) {
-        setError(err.message || 'Failed to load billing information');
-      } finally {
-        setLoading(false);
-      }
+  const loadBillingData = useCallback(async () => {
+    try {
+      setError(null);
+      const token = await getToken();
+      const [subData, invData, pmData] = await Promise.all([
+        fetchSubscription(token),
+        fetchInvoices(token),
+        fetchPaymentMethods(token),
+      ]);
+      setSubscription(subData);
+      setInvoices(invData);
+      setPaymentMethods(pmData);
+    } catch (err: any) {
+      setError(err.message || "Failed to load billing information");
+    } finally {
+      setLoading(false);
     }
-    load();
   }, [getToken]);
 
+  useEffect(() => {
+    loadBillingData();
+  }, [loadBillingData]);
+
   const isPaid =
-    subscription?.planTier !== 'starter' && subscription?.planTier != null;
+    subscription?.planTier !== "starter" && subscription?.planTier != null;
 
   function handleSubscribe() {
-    const orgId = subscription?.organizationId || '';
+    const orgId = subscription?.organizationId || "";
     window.location.href = `https://buy.stripe.com/9B614n8Mhfl508P1ggcZa00?client_reference_id=${orgId}`;
   }
 
@@ -106,27 +107,28 @@ export default function BillingPage() {
     try {
       const token = await getToken();
       const { url } = await createPortalSession(token);
-      window.location.href = url;
+      if (!url) {
+        throw new Error("Billing portal URL is unavailable");
+      }
+      window.location.assign(url);
     } catch (err: any) {
-      setError(err.message || 'Failed to open billing portal');
+      setError(err.message || "Failed to open billing portal");
     } finally {
-      // Reset after a short delay — if navigation succeeds, this is harmless
-      setTimeout(() => setPortalLoading(false), 3000);
+      setPortalLoading(false);
     }
   }
 
   async function handleCancelSubscription() {
+    if (cancelLoading) return;
     setCancelLoading(true);
     setError(null);
     try {
       const token = await getToken();
       await apiCancelSubscription(token);
-      // Refresh subscription data to show updated state
-      const subData = await fetchSubscription(token);
-      setSubscription(subData);
+      await loadBillingData();
       setShowCancelConfirm(false);
     } catch (err: any) {
-      setError(err.message || 'Failed to cancel subscription');
+      setError(err.message || "Failed to cancel subscription");
     } finally {
       setCancelLoading(false);
     }
@@ -138,10 +140,9 @@ export default function BillingPage() {
     try {
       const token = await getToken();
       await apiResumeSubscription(token);
-      const subData = await fetchSubscription(token);
-      setSubscription(subData);
+      await loadBillingData();
     } catch (err: any) {
-      setError(err.message || 'Failed to resume subscription');
+      setError(err.message || "Failed to resume subscription");
     } finally {
       setResumeLoading(false);
     }
@@ -201,7 +202,7 @@ export default function BillingPage() {
               Your plan will downgrade to Free
               {subscription?.subscription?.cancelAt
                 ? ` on ${formatDate(subscription.subscription.cancelAt)}`
-                : ' at the end of your billing period'}
+                : " at the end of your billing period"}
               . You can resume your subscription before then.
             </p>
           </div>
@@ -227,123 +228,138 @@ export default function BillingPage() {
 
       {/* ── Plan Comparison ── */}
       <div data-tour="plan-comparison">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-900">Your Plan</h2>
-            {subscription?.subscription && (
-              <p className="text-xs text-slate-400">
-                {subscription.subscription.cancelAtPeriodEnd
-                  ? `Cancels${subscription.subscription.cancelAt ? ` on ${formatDate(subscription.subscription.cancelAt)}` : ' at end of period'}`
-                  : `Started ${formatDate(subscription.subscription.startDate)}`}
-              </p>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Free Plan */}
-            <div
-              className={`rounded-lg border p-5 ${
-                !isPaid
-                  ? 'border-primary-300 bg-primary-50 ring-1 ring-primary-200'
-                  : 'border-slate-200'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <p className="font-semibold text-slate-900">Free</p>
-                {!isPaid && <Badge variant="info">Current</Badge>}
-              </div>
-              <p className="text-2xl font-bold text-slate-900 mb-4">$0</p>
-              <ul className="space-y-2 mb-5">
-                <li className="text-sm text-slate-600 flex items-start gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
-                  Up to 3 clinicians
-                </li>
-                <li className="text-sm text-slate-600 flex items-start gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
-                  Basic compliance tracking
-                </li>
-                <li className="text-sm text-slate-600 flex items-start gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
-                  Document management
-                </li>
-              </ul>
-              {!isPaid ? (
-                <Button size="sm" variant="secondary" disabled className="w-full">
-                  Current Plan
-                </Button>
-              ) : isCanceling ? (
-                <Button size="sm" variant="secondary" disabled className="w-full">
-                  Downgrade Pending
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
-                  onClick={() => setShowCancelConfirm(true)}
-                >
-                  Downgrade to Free
-                </Button>
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-900">
+                Your Plan
+              </h2>
+              {subscription?.subscription && (
+                <p className="text-xs text-slate-400">
+                  {subscription.subscription.cancelAtPeriodEnd
+                    ? `Cancels${subscription.subscription.cancelAt ? ` on ${formatDate(subscription.subscription.cancelAt)}` : " at end of period"}`
+                    : `Started ${formatDate(subscription.subscription.startDate)}`}
+                </p>
               )}
             </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Free Plan */}
+              <div
+                className={`rounded-lg border p-5 ${
+                  !isPaid
+                    ? "border-primary-300 bg-primary-50 ring-1 ring-primary-200"
+                    : "border-slate-200"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <p className="font-semibold text-slate-900">Free</p>
+                  {!isPaid && <Badge variant="info">Current</Badge>}
+                </div>
+                <p className="text-2xl font-bold text-slate-900 mb-4">$0</p>
+                <ul className="space-y-2 mb-5">
+                  <li className="text-sm text-slate-600 flex items-start gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                    Up to 3 clinicians
+                  </li>
+                  <li className="text-sm text-slate-600 flex items-start gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                    Basic compliance tracking
+                  </li>
+                  <li className="text-sm text-slate-600 flex items-start gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                    Document management
+                  </li>
+                </ul>
+                {!isPaid ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled
+                    className="w-full"
+                  >
+                    Current Plan
+                  </Button>
+                ) : isCanceling ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled
+                    className="w-full"
+                  >
+                    Downgrade Pending
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => setShowCancelConfirm(true)}
+                  >
+                    Downgrade to Free
+                  </Button>
+                )}
+              </div>
 
-            {/* Paid Plan */}
-            <div
-              className={`rounded-lg border p-5 ${
-                isPaid
-                  ? 'border-primary-300 bg-primary-50 ring-1 ring-primary-200'
-                  : 'border-slate-200'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <p className="font-semibold text-slate-900">Credentis</p>
-                {isPaid && <Badge variant="success">Active</Badge>}
+              {/* Paid Plan */}
+              <div
+                className={`rounded-lg border p-5 ${
+                  isPaid
+                    ? "border-primary-300 bg-primary-50 ring-1 ring-primary-200"
+                    : "border-slate-200"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <p className="font-semibold text-slate-900">Credentis</p>
+                  {isPaid && <Badge variant="success">Active</Badge>}
+                </div>
+                <p className="text-2xl font-bold text-slate-900 mb-4">
+                  $499
+                  <span className="text-sm font-normal text-slate-500">
+                    /mo
+                  </span>
+                </p>
+                <ul className="space-y-2 mb-5">
+                  <li className="text-sm text-slate-600 flex items-start gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                    Unlimited clinicians
+                  </li>
+                  <li className="text-sm text-slate-600 flex items-start gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                    Full compliance suite
+                  </li>
+                  <li className="text-sm text-slate-600 flex items-start gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                    Priority support
+                  </li>
+                </ul>
+                {isPaid ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="w-full"
+                    onClick={handleManageBilling}
+                    loading={portalLoading}
+                  >
+                    Manage Subscription
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    className="w-full"
+                    loading={checkoutLoading}
+                    onClick={handleSubscribe}
+                  >
+                    Subscribe
+                  </Button>
+                )}
               </div>
-              <p className="text-2xl font-bold text-slate-900 mb-4">
-                $499<span className="text-sm font-normal text-slate-500">/mo</span>
-              </p>
-              <ul className="space-y-2 mb-5">
-                <li className="text-sm text-slate-600 flex items-start gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
-                  Unlimited clinicians
-                </li>
-                <li className="text-sm text-slate-600 flex items-start gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
-                  Full compliance suite
-                </li>
-                <li className="text-sm text-slate-600 flex items-start gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
-                  Priority support
-                </li>
-              </ul>
-              {isPaid ? (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="w-full"
-                  onClick={handleManageBilling}
-                  loading={portalLoading}
-                >
-                  Manage Subscription
-                  <ExternalLink className="h-3 w-3" />
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="primary"
-                  className="w-full"
-                  loading={checkoutLoading}
-                  onClick={handleSubscribe}
-                >
-                  Subscribe
-                </Button>
-              )}
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
       </div>
 
       {/* ── Payment Methods ── */}
@@ -381,7 +397,7 @@ export default function BillingPage() {
                     <CreditCard className="h-5 w-5 text-slate-400" />
                     <div>
                       <p className="text-sm font-medium text-slate-900 capitalize">
-                        {pm.brand || 'Card'} ending in {pm.last4 || '****'}
+                        {pm.brand || "Card"} ending in {pm.last4 || "****"}
                       </p>
                       <p className="text-xs text-slate-400">
                         Expires {pm.expMonth}/{pm.expYear}
@@ -434,10 +450,7 @@ export default function BillingPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {invoices.map((inv) => (
-                    <tr
-                      key={inv.id}
-                      className="hover:bg-slate-50 transition"
-                    >
+                    <tr key={inv.id} className="hover:bg-slate-50 transition">
                       <td className="px-5 py-3 font-medium text-slate-900">
                         {inv.number || inv.id.slice(0, 12)}
                       </td>
@@ -450,11 +463,11 @@ export default function BillingPage() {
                       <td className="px-5 py-3">
                         <Badge
                           variant={
-                            inv.status === 'paid'
-                              ? 'success'
-                              : inv.status === 'open'
-                                ? 'warning'
-                                : 'neutral'
+                            inv.status === "paid"
+                              ? "success"
+                              : inv.status === "open"
+                                ? "warning"
+                                : "neutral"
                           }
                         >
                           {inv.status}
@@ -518,6 +531,7 @@ export default function BillingPage() {
                 className="bg-red-600 hover:bg-red-700"
                 onClick={handleCancelSubscription}
                 loading={cancelLoading}
+                disabled={cancelLoading}
               >
                 Yes, Cancel
               </Button>

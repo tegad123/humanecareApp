@@ -1,13 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { EmailService } from '../../jobs/email.service.js';
 import { CreateAccessRequestDto } from './dto/create-access-request.dto.js';
 import { Role } from '../../../generated/prisma/client.js';
-
-/** Hardcoded fallback — always receives access request notifications */
-const DEFAULT_ADMIN_EMAIL = 'tegad8@gmail.com';
 
 @Injectable()
 export class AccessRequestsService {
@@ -20,8 +22,13 @@ export class AccessRequestsService {
     private emailService: EmailService,
     private config: ConfigService,
   ) {
-    this.apiUrl = this.config.get<string>('API_URL') || 'https://api.credentis.app/api';
-    this.frontendUrl = (this.config.get<string>('FRONTEND_URL') || 'https://credentis.app').split(',')[0].trim();
+    this.apiUrl =
+      this.config.get<string>('API_URL') || 'https://api.credentis.app/api';
+    this.frontendUrl = (
+      this.config.get<string>('FRONTEND_URL') || 'https://credentis.app'
+    )
+      .split(',')[0]
+      .trim();
   }
 
   // ─── Create ──────────────────────────────────────────
@@ -61,7 +68,9 @@ export class AccessRequestsService {
   }
 
   async findOne(id: string) {
-    const request = await this.prisma.accessRequest.findUnique({ where: { id } });
+    const request = await this.prisma.accessRequest.findUnique({
+      where: { id },
+    });
     if (!request) throw new NotFoundException('Access request not found');
     return request;
   }
@@ -83,55 +92,67 @@ export class AccessRequestsService {
   // ─── Approve by email token ──────────────────────────
 
   async approveByToken(token: string) {
-    const request = await this.prisma.accessRequest.findUnique({
-      where: { approvalToken: token },
-    });
+    const request = await this.prisma.$transaction(async (tx) => {
+      const pendingRequest = await tx.accessRequest.findUnique({
+        where: { approvalToken: token },
+      });
 
-    if (!request) {
-      throw new NotFoundException('Invalid or expired approval link.');
-    }
-    if (request.status !== 'pending') {
-      throw new BadRequestException(
-        `This request has already been ${request.status}.`,
+      if (!pendingRequest) {
+        throw new NotFoundException('Invalid or expired approval link.');
+      }
+      if (pendingRequest.status !== 'pending') {
+        throw new BadRequestException(
+          `This request has already been ${pendingRequest.status}.`,
+        );
+      }
+
+      const org = await tx.organization.create({
+        data: {
+          name: pendingRequest.agencyName,
+          planTier: 'starter',
+          planFlags: { ai_doc_intelligence: false, sms_reminders: false },
+        },
+      });
+      this.logger.log(`Created organization "${org.name}" (${org.id})`);
+
+      const placeholderId = `pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+      const user = await tx.user.create({
+        data: {
+          organizationId: org.id,
+          clerkUserId: placeholderId,
+          email: pendingRequest.workEmail,
+          name: pendingRequest.requesterName,
+          role: 'admin' as Role,
+        },
+      });
+      this.logger.log(
+        `Created admin user "${user.email}" (${user.id}) for org ${org.id}`,
       );
-    }
 
-    // 1. Create Organization
-    const org = await this.prisma.organization.create({
-      data: {
-        name: request.agencyName,
-        planTier: 'starter',
-        planFlags: { ai_doc_intelligence: false, sms_reminders: false },
-      },
-    });
-    this.logger.log(`Created organization "${org.name}" (${org.id})`);
+      const consumed = await tx.accessRequest.updateMany({
+        where: {
+          id: pendingRequest.id,
+          status: 'pending',
+          approvalToken: token,
+        },
+        data: {
+          status: 'approved',
+          approvalToken: null,
+          reviewedAt: new Date(),
+          reviewNotes: 'Approved via email link',
+        },
+      });
 
-    // 2. Create admin user with pending clerk ID (auto-linked on first sign-in)
-    const placeholderId = `pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      if (consumed.count !== 1) {
+        throw new BadRequestException(
+          'This request has already been approved.',
+        );
+      }
 
-    const user = await this.prisma.user.create({
-      data: {
-        organizationId: org.id,
-        clerkUserId: placeholderId,
-        email: request.workEmail,
-        name: request.requesterName,
-        role: 'admin' as Role,
-      },
-    });
-    this.logger.log(`Created admin user "${user.email}" (${user.id}) for org ${org.id}`);
-
-    // 3. Mark access request as approved & consume the token
-    await this.prisma.accessRequest.update({
-      where: { id: request.id },
-      data: {
-        status: 'approved',
-        approvalToken: null,
-        reviewedAt: new Date(),
-        reviewNotes: 'Approved via email link',
-      },
+      return pendingRequest;
     });
 
-    // 4. Send welcome email to the requester
     await this.sendWelcomeEmail(request);
 
     return {
@@ -144,31 +165,43 @@ export class AccessRequestsService {
   // ─── Reject by email token ───────────────────────────
 
   async rejectByToken(token: string) {
-    const request = await this.prisma.accessRequest.findUnique({
-      where: { approvalToken: token },
+    const request = await this.prisma.$transaction(async (tx) => {
+      const pendingRequest = await tx.accessRequest.findUnique({
+        where: { approvalToken: token },
+      });
+
+      if (!pendingRequest) {
+        throw new NotFoundException('Invalid or expired rejection link.');
+      }
+      if (pendingRequest.status !== 'pending') {
+        throw new BadRequestException(
+          `This request has already been ${pendingRequest.status}.`,
+        );
+      }
+
+      const consumed = await tx.accessRequest.updateMany({
+        where: {
+          id: pendingRequest.id,
+          status: 'pending',
+          approvalToken: token,
+        },
+        data: {
+          status: 'rejected',
+          approvalToken: null,
+          reviewedAt: new Date(),
+          reviewNotes: 'Rejected via email link',
+        },
+      });
+
+      if (consumed.count !== 1) {
+        throw new BadRequestException(
+          'This request has already been rejected.',
+        );
+      }
+
+      return pendingRequest;
     });
 
-    if (!request) {
-      throw new NotFoundException('Invalid or expired rejection link.');
-    }
-    if (request.status !== 'pending') {
-      throw new BadRequestException(
-        `This request has already been ${request.status}.`,
-      );
-    }
-
-    // Mark as rejected & consume the token
-    await this.prisma.accessRequest.update({
-      where: { id: request.id },
-      data: {
-        status: 'rejected',
-        approvalToken: null,
-        reviewedAt: new Date(),
-        reviewNotes: 'Rejected via email link',
-      },
-    });
-
-    // Send polite rejection email
     await this.sendRejectionEmail(request);
 
     return {
@@ -185,12 +218,24 @@ export class AccessRequestsService {
       select: { email: true },
     });
 
-    const adminEmail =
-      this.config.get<string>('ADMIN_NOTIFICATION_EMAIL') || DEFAULT_ADMIN_EMAIL;
-    const emails = new Set([
-      adminEmail,
-      ...superAdmins.map((a: { email: string }) => a.email),
-    ]);
+    const configuredAdminEmail = this.config
+      .get<string>('ADMIN_NOTIFICATION_EMAIL')
+      ?.trim();
+    const emails = new Set(
+      [
+        configuredAdminEmail,
+        ...superAdmins.map((a: { email: string }) => a.email?.trim()),
+      ]
+        .filter((email): email is string => !!email)
+        .map((email) => email.toLowerCase()),
+    );
+
+    if (emails.size === 0) {
+      this.logger.warn(
+        `No admin notification recipients found for access request ${request.id}. Configure ADMIN_NOTIFICATION_EMAIL or create a super_admin user.`,
+      );
+      return;
+    }
 
     const approveUrl = `${this.apiUrl}/access-requests/approve/${request.approvalToken}`;
     const rejectUrl = `${this.apiUrl}/access-requests/reject/${request.approvalToken}`;
@@ -353,7 +398,9 @@ export class AccessRequestsService {
         html,
       })
       .catch((err) =>
-        this.logger.error(`Failed to send welcome email to ${request.workEmail}: ${err.message}`),
+        this.logger.error(
+          `Failed to send welcome email to ${request.workEmail}: ${err.message}`,
+        ),
       );
   }
 
@@ -407,7 +454,9 @@ export class AccessRequestsService {
         html,
       })
       .catch((err) =>
-        this.logger.error(`Failed to send rejection email to ${request.workEmail}: ${err.message}`),
+        this.logger.error(
+          `Failed to send rejection email to ${request.workEmail}: ${err.message}`,
+        ),
       );
   }
 }
