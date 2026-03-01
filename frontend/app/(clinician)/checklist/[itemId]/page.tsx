@@ -346,7 +346,16 @@ export default function ChecklistItemPage() {
                     type="file"
                     className="hidden"
                     accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    onChange={(e) => {
+                      const selected = e.target.files?.[0] || null;
+                      if (selected && selected.size > 10 * 1024 * 1024) {
+                        setError('File size must be under 10 MB');
+                        e.target.value = '';
+                        return;
+                      }
+                      setError(null);
+                      setFile(selected);
+                    }}
                   />
                 </label>
               </div>
@@ -494,6 +503,7 @@ export default function ChecklistItemPage() {
                 type="date"
                 value={expiresAt}
                 onChange={(e) => setExpiresAt(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
               />
             )}
 

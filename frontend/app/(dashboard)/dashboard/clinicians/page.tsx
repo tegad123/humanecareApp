@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '@clerk/nextjs';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Search, AlertCircle } from 'lucide-react';
 import { Button, Badge, Card, CardContent, Spinner, ProgressBar } from '@/components/ui';
@@ -20,16 +21,36 @@ function formatStatus(s: string) {
 
 export default function CliniciansListPage() {
   const { getToken } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [clinicians, setClinicians] = useState<ClinicianWithProgress[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filters
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [disciplineFilter, setDisciplineFilter] = useState('');
-  const [page, setPage] = useState(0);
+  // Initialize filters from URL params
+  const [search, setSearch] = useState(searchParams.get('q') || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get('q') || '');
+  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '');
+  const [disciplineFilter, setDisciplineFilter] = useState(searchParams.get('discipline') || '');
+  const [page, setPage] = useState(Number(searchParams.get('page')) || 0);
+
+  // Debounce search input (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Sync filters to URL params
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set('q', debouncedSearch);
+    if (statusFilter) params.set('status', statusFilter);
+    if (disciplineFilter) params.set('discipline', disciplineFilter);
+    if (page > 0) params.set('page', String(page));
+    const qs = params.toString();
+    router.replace(`/dashboard/clinicians${qs ? `?${qs}` : ''}`, { scroll: false });
+  }, [debouncedSearch, statusFilter, disciplineFilter, page, router]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,7 +58,7 @@ export default function CliniciansListPage() {
     try {
       const token = await getToken();
       const data = await fetchClinicians(token, {
-        search: search || undefined,
+        search: debouncedSearch || undefined,
         status: statusFilter || undefined,
         discipline: disciplineFilter || undefined,
         limit: PAGE_SIZE,
@@ -50,7 +71,7 @@ export default function CliniciansListPage() {
     } finally {
       setLoading(false);
     }
-  }, [getToken, search, statusFilter, disciplineFilter, page]);
+  }, [getToken, debouncedSearch, statusFilter, disciplineFilter, page]);
 
   useEffect(() => {
     load();
@@ -59,9 +80,10 @@ export default function CliniciansListPage() {
   // Reset page when filters change
   useEffect(() => {
     setPage(0);
-  }, [search, statusFilter, disciplineFilter]);
+  }, [debouncedSearch, statusFilter, disciplineFilter]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
+  const hasFilters = debouncedSearch || statusFilter || disciplineFilter;
 
   return (
     <div className="space-y-6">
@@ -135,7 +157,23 @@ export default function CliniciansListPage() {
         </div>
       ) : clinicians.length === 0 ? (
         <Card className="p-8 text-center">
-          <p className="text-sm text-slate-500">No clinicians found.</p>
+          <p className="text-sm text-slate-500">
+            {hasFilters
+              ? 'No clinicians match your filters.'
+              : 'No clinicians added yet.'}
+          </p>
+          {hasFilters && (
+            <button
+              onClick={() => {
+                setSearch('');
+                setStatusFilter('');
+                setDisciplineFilter('');
+              }}
+              className="mt-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
+            >
+              Clear filters
+            </button>
+          )}
         </Card>
       ) : (
         <div data-tour="clinician-table">
@@ -193,7 +231,7 @@ export default function CliniciansListPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-slate-500">
-            Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
+            Page {page + 1} of {totalPages} &middot; Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
           </p>
           <div className="flex gap-2">
             <Button

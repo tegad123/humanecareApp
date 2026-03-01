@@ -102,7 +102,13 @@ export class ChecklistItemsService {
         updateData.docStoragePath = dto.docStoragePath;
         updateData.docOriginalName = dto.docOriginalName || null;
         updateData.docMimeType = dto.docMimeType || null;
-        if (dto.expiresAt) updateData.expiresAt = new Date(dto.expiresAt);
+        if (dto.expiresAt) {
+          const expDate = new Date(dto.expiresAt);
+          if (expDate < new Date()) {
+            throw new BadRequestException('Expiration date cannot be in the past');
+          }
+          updateData.expiresAt = expDate;
+        }
         break;
 
       case 'text':

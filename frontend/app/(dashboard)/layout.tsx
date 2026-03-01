@@ -17,11 +17,13 @@ export default async function DashboardLayout({
   if (!userId) redirect('/sign-in');
 
   // Block clinicians from accessing the admin dashboard
+  let userRole = 'admin';
   try {
     const me = await apiFetch<{ role: string; entityType?: string }>('/users/me');
     if (me.role === 'clinician' || me.entityType === 'clinician') {
       redirect('/checklist');
     }
+    userRole = me.role;
   } catch (e: any) {
     // Re-throw Next.js redirect (it uses a special NEXT_REDIRECT error)
     if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e;
@@ -48,7 +50,7 @@ export default async function DashboardLayout({
       </header>
 
       <div className="flex">
-        <DashboardClientWrapper>{children}</DashboardClientWrapper>
+        <DashboardClientWrapper userRole={userRole}>{children}</DashboardClientWrapper>
       </div>
     </div>
   );

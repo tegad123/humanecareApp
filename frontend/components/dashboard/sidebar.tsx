@@ -13,20 +13,60 @@ import {
   Menu,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { TourTriggerButton } from '@/components/tour/tour-trigger-button';
 
+/**
+ * Role-based access for sidebar navigation items.
+ * Each nav item lists which roles can see it.
+ * super_admin and admin see everything.
+ */
 const navItems = [
-  { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
-  { href: '/dashboard/clinicians', label: 'Clinicians', icon: Users },
-  { href: '/dashboard/templates', label: 'Templates', icon: ClipboardList },
-  { href: '/dashboard/email-settings', label: 'Email Settings', icon: Mail },
-  { href: '/dashboard/audit-logs', label: 'Audit Logs', icon: FileText },
-  { href: '/dashboard/billing', label: 'Billing', icon: CreditCard },
-  { href: '/dashboard/settings', label: 'Settings', icon: Settings },
+  {
+    href: '/dashboard',
+    label: 'Overview',
+    icon: LayoutDashboard,
+    roles: ['super_admin', 'admin', 'recruiter', 'compliance', 'scheduler', 'payroll'],
+  },
+  {
+    href: '/dashboard/clinicians',
+    label: 'Clinicians',
+    icon: Users,
+    roles: ['super_admin', 'admin', 'recruiter', 'compliance', 'scheduler', 'payroll'],
+  },
+  {
+    href: '/dashboard/templates',
+    label: 'Templates',
+    icon: ClipboardList,
+    roles: ['super_admin', 'admin', 'compliance'],
+  },
+  {
+    href: '/dashboard/email-settings',
+    label: 'Email Settings',
+    icon: Mail,
+    roles: ['super_admin', 'admin'],
+  },
+  {
+    href: '/dashboard/audit-logs',
+    label: 'Audit Logs',
+    icon: FileText,
+    roles: ['super_admin', 'admin', 'compliance'],
+  },
+  {
+    href: '/dashboard/billing',
+    label: 'Billing',
+    icon: CreditCard,
+    roles: ['super_admin', 'admin'],
+  },
+  {
+    href: '/dashboard/settings',
+    label: 'Settings',
+    icon: Settings,
+    roles: ['super_admin', 'admin'],
+  },
 ];
 
-export function Sidebar() {
+export function Sidebar({ userRole }: { userRole: string }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -35,9 +75,14 @@ export function Sidebar() {
     return pathname.startsWith(href);
   };
 
+  const visibleItems = useMemo(
+    () => navItems.filter((item) => item.roles.includes(userRole)),
+    [userRole],
+  );
+
   const navContent = (
     <nav className="flex flex-col gap-1 px-3 py-4 h-full">
-      {navItems.map((item) => {
+      {visibleItems.map((item) => {
         const Icon = item.icon;
         const active = isActive(item.href);
         return (

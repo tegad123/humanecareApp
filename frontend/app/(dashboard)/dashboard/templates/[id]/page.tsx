@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -55,6 +55,19 @@ export default function TemplateEditorPage() {
     highRisk: false,
     instructions: '',
   });
+
+  // Track if the add-form has unsaved data
+  const hasUnsavedNewItem = showAddForm && (newItem.label.trim() !== '' || newItem.section.trim() !== '');
+
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedNewItem) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasUnsavedNewItem]);
 
   const load = useCallback(async () => {
     try {

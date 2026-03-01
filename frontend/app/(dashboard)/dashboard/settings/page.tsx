@@ -133,7 +133,12 @@ export default function SettingsPage() {
   /* ── Invite ── */
 
   async function handleInvite() {
-    if (!inviteEmail.trim()) return;
+    const email = inviteEmail.trim();
+    if (!email) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setInviteError('Please enter a valid email address');
+      return;
+    }
     setInviteLoading(true);
     setInviteError(null);
     try {
@@ -501,7 +506,7 @@ export default function SettingsPage() {
               size="sm"
               loading={inviteLoading}
               onClick={handleInvite}
-              disabled={!inviteEmail.trim()}
+              disabled={!inviteEmail.trim() || inviteLoading}
             >
               Send Invitation
             </Button>

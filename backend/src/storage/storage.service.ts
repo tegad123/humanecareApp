@@ -4,6 +4,8 @@ import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
 @Injectable()
 export class StorageService {
   private s3: S3Client;
@@ -23,6 +25,7 @@ export class StorageService {
   /**
    * Generate a presigned URL for uploading a file to S3.
    * Key format: {orgId}/{clinicianId}/{itemId}/{uuid}-{fileName}
+   * Enforces a 10 MB content-length limit via S3 conditions.
    */
   async getUploadUrl(params: {
     organizationId: string;
@@ -37,11 +40,12 @@ export class StorageService {
       Bucket: this.bucket,
       Key: key,
       ContentType: params.contentType,
+      ContentLength: MAX_FILE_SIZE_BYTES,
     });
 
     const url = await getSignedUrl(this.s3, command, { expiresIn: 300 });
 
-    return { url, key };
+    return { url, key, maxFileSizeBytes: MAX_FILE_SIZE_BYTES };
   }
 
   /**

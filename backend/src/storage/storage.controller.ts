@@ -10,6 +10,16 @@ import { StorageService } from './storage.service.js';
 import { CurrentUser } from '../auth/decorators/index.js';
 import type { AuthenticatedUser } from '../common/interfaces.js';
 
+const ALLOWED_CONTENT_TYPES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
 @Controller('storage')
 export class StorageController {
   constructor(private readonly storageService: StorageService) {}
@@ -22,6 +32,28 @@ export class StorageController {
     const authUser = user as AuthenticatedUser;
     if (!body.fileName || !body.contentType || !body.clinicianId || !body.itemId) {
       throw new BadRequestException('Missing required fields: clinicianId, itemId, fileName, contentType');
+    }
+
+    // Validate content type against allowlist
+    if (!ALLOWED_CONTENT_TYPES.has(body.contentType)) {
+      throw new BadRequestException(
+        `File type "${body.contentType}" is not allowed. Accepted types: PDF, JPEG, PNG, DOC, DOCX.`,
+      );
+    }
+
+    // Validate file name length
+    if (body.fileName.length > 255) {
+      throw new BadRequestException('File name must not exceed 255 characters');
+    }
+
+    // Clinician ownership check: if the caller is a clinician, they can only
+    // upload for themselves (authUser.clinicianId is set by the auth guard).
+    if (
+      authUser.entityType === 'clinician' &&
+      authUser.clinicianId &&
+      body.clinicianId !== authUser.clinicianId
+    ) {
+      throw new BadRequestException('You can only upload files for your own checklist items');
     }
 
     return this.storageService.getUploadUrl({

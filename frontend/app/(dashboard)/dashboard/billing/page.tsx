@@ -24,6 +24,7 @@ import {
   fetchInvoices,
   fetchPaymentMethods,
   createPortalSession,
+  createCheckoutSession,
   cancelSubscription as apiCancelSubscription,
   resumeSubscription as apiResumeSubscription,
   type SubscriptionInfo,
@@ -96,9 +97,21 @@ export default function BillingPage() {
   const isPaid =
     subscription?.planTier !== "starter" && subscription?.planTier != null;
 
-  function handleSubscribe() {
-    const orgId = subscription?.organizationId || "";
-    window.location.href = `https://buy.stripe.com/9B614n8Mhfl508P1ggcZa00?client_reference_id=${orgId}`;
+  async function handleSubscribe() {
+    setCheckoutLoading(true);
+    setError(null);
+    try {
+      const token = await getToken();
+      const { url } = await createCheckoutSession(token);
+      if (!url) {
+        throw new Error("Checkout session URL is unavailable");
+      }
+      window.location.assign(url);
+    } catch (err: any) {
+      setError(err.message || "Failed to start checkout");
+    } finally {
+      setCheckoutLoading(false);
+    }
   }
 
   async function handleManageBilling() {
