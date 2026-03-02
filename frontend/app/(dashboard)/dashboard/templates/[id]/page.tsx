@@ -18,12 +18,18 @@ import Link from 'next/link';
 import { Button, Badge, Card, CardContent, Input, Spinner } from '@/components/ui';
 import {
   fetchTemplate,
+  fetchTemplateDocuments,
   updateItemDefinition,
   createItemDefinition,
   deleteItemDefinition,
   type Template,
   type ItemDefinition,
+  type TemplateDocument,
 } from '@/lib/api/templates';
+import {
+  fetchOrgDocuments,
+  type OrgDocument,
+} from '@/lib/api/org-documents';
 
 const ITEM_TYPES = [
   { value: 'file_upload', label: 'File Upload' },
@@ -44,6 +50,10 @@ export default function TemplateEditorPage() {
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
+
+  // Available documents for linking
+  const [orgDocs, setOrgDocs] = useState<OrgDocument[]>([]);
+  const [templateDocs, setTemplateDocs] = useState<TemplateDocument[]>([]);
 
   // New item form
   const [newItem, setNewItem] = useState({
@@ -72,8 +82,14 @@ export default function TemplateEditorPage() {
   const load = useCallback(async () => {
     try {
       const token = await getToken();
-      const data = await fetchTemplate(token, id);
+      const [data, orgDocsData, templateDocsData] = await Promise.all([
+        fetchTemplate(token, id),
+        fetchOrgDocuments(token).catch(() => []),
+        fetchTemplateDocuments(token, id).catch(() => []),
+      ]);
       setTemplate(data);
+      setOrgDocs(orgDocsData);
+      setTemplateDocs(templateDocsData);
     } finally {
       setLoading(false);
     }
@@ -282,6 +298,51 @@ export default function TemplateEditorPage() {
                             </label>
                           ))}
                         </div>
+
+                        {/* Link Document — for file_upload and e_signature items */}
+                        {(item.type === 'file_upload' || item.type === 'e_signature') && (
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                              Linked Document
+                              <span className="font-normal text-slate-400 ml-1">
+                                {item.type === 'file_upload'
+                                  ? '(clinician downloads this form, fills it out, then uploads)'
+                                  : '(document shown for e-signature review)'}
+                              </span>
+                            </label>
+                            <select
+                              value={item.linkedDocumentId || ''}
+                              onChange={(e) =>
+                                handleUpdateItem(
+                                  item.id,
+                                  'linkedDocumentId',
+                                  e.target.value || null,
+                                )
+                              }
+                              className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+                            >
+                              <option value="">No linked document</option>
+                              {orgDocs.length > 0 && (
+                                <optgroup label="Organization Documents">
+                                  {orgDocs.map((doc) => (
+                                    <option key={doc.id} value={doc.id}>
+                                      {doc.name} ({doc.category})
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {templateDocs.length > 0 && (
+                                <optgroup label="Template Documents">
+                                  {templateDocs.map((doc) => (
+                                    <option key={doc.id} value={doc.id}>
+                                      {doc.name}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </select>
+                          </div>
+                        )}
 
                         <div className="flex justify-end">
                           <Button

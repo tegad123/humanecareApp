@@ -112,7 +112,7 @@ export class TemplateDocumentsService {
     });
     if (!doc) throw new NotFoundException('Document not found');
 
-    if (!doc.template.isCustomized || doc.template.organizationId !== user.organizationId) {
+    if (!doc.template || !doc.template.isCustomized || doc.template.organizationId !== user.organizationId) {
       throw new ForbiddenException('Cannot delete documents from templates you don\'t own');
     }
 

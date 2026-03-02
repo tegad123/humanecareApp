@@ -17,6 +17,7 @@ import { TemplateDocumentsModule } from './modules/template-documents/template-d
 import { EmailSettingsModule } from './modules/email-settings/email-settings.module.js';
 import { AccessRequestsModule } from './modules/access-requests/access-requests.module.js';
 import { BillingModule } from './modules/billing/billing.module.js';
+import { OrgDocumentsModule } from './modules/org-documents/org-documents.module.js';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { BillingModule } from './modules/billing/billing.module.js';
     EmailSettingsModule,
     AccessRequestsModule,
     BillingModule,
+    OrgDocumentsModule,
   ],
 })
 export class AppModule {}

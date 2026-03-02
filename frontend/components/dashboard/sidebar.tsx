@@ -7,6 +7,7 @@ import {
   Users,
   ClipboardList,
   FileText,
+  FolderOpen,
   Mail,
   CreditCard,
   Settings,
@@ -39,6 +40,12 @@ const navItems = [
     label: 'Templates',
     icon: ClipboardList,
     roles: ['super_admin', 'admin', 'compliance'],
+  },
+  {
+    href: '/dashboard/documents',
+    label: 'Documents',
+    icon: FolderOpen,
+    roles: ['super_admin', 'admin'],
   },
   {
     href: '/dashboard/email-settings',

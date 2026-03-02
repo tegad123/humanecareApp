@@ -66,8 +66,11 @@ export default function ChecklistItemPage() {
         if (found.valueSelect) setSelectValue(found.valueSelect);
         if (found.expiresAt) setExpiresAt(found.expiresAt.split('T')[0]);
 
-        // Fetch linked document URL for e-signature items
-        if (found.itemDefinition.linkedDocumentId && found.itemDefinition.type === 'e_signature') {
+        // Fetch linked document URL for e-signature and file_upload items
+        if (
+          found.itemDefinition.linkedDocumentId &&
+          (found.itemDefinition.type === 'e_signature' || found.itemDefinition.type === 'file_upload')
+        ) {
           try {
             const docData = await getLinkedDocumentUrl(
               token,
@@ -77,7 +80,18 @@ export default function ChecklistItemPage() {
             setLinkedDocUrl(docData.url);
             setLinkedDocName(docData.name);
           } catch {
-            // Document may have been deleted — non-fatal
+            // Template-specific doc not found — try org-level document endpoint
+            try {
+              const { getOrgDocClinicianDownloadUrl } = await import('@/lib/api/org-documents');
+              const docData = await getOrgDocClinicianDownloadUrl(
+                token,
+                found.itemDefinition.linkedDocumentId,
+              );
+              setLinkedDocUrl(docData.url);
+              setLinkedDocName(docData.name);
+            } catch {
+              // Document may have been deleted — non-fatal
+            }
           }
         }
       } catch (err: any) {
@@ -326,11 +340,37 @@ export default function ChecklistItemPage() {
       {canSubmit && !success && (
         <Card>
           <CardContent className="space-y-4">
+            {/* File upload — linked document download */}
+            {def.type === 'file_upload' && linkedDocUrl && (
+              <div className="rounded-lg border border-primary-200 bg-primary-50 p-4">
+                <div className="flex items-start gap-3">
+                  <FileText className="h-5 w-5 text-primary-600 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-primary-900">
+                      Download: {linkedDocName || 'Form'}
+                    </p>
+                    <p className="text-xs text-primary-700 mt-0.5">
+                      Download this form, fill it out, then upload your completed version below.
+                    </p>
+                    <a
+                      href={linkedDocUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 bg-white border border-primary-300 rounded-lg text-sm font-medium text-primary-700 hover:bg-primary-100 transition"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download Form
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* File upload */}
             {def.type === 'file_upload' && (
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Upload Document
+                  {linkedDocUrl ? 'Upload Completed Document' : 'Upload Document'}
                 </label>
                 <label className="flex flex-col items-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 p-6 cursor-pointer hover:border-primary-400 hover:bg-primary-50/50 transition">
                   <Upload className="h-6 w-6 text-slate-400" />

@@ -256,8 +256,10 @@ model ClinicianChecklistItem {
 model TemplateDocument {
   id             String   @id @default(uuid())
   organizationId String   @map("organization_id")
-  templateId     String   @map("template_id")
+  templateId     String?  @map("template_id")
   name           String
+  category       String   @default("other")
+  description    String?
   storagePath    String   @map("storage_path")
   mimeType       String?  @map("mime_type")
   fileSizeBytes  Int?     @map("file_size_bytes")
@@ -265,7 +267,7 @@ model TemplateDocument {
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  template     ChecklistTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  template     ChecklistTemplate?      @relation(fields: [templateId], references: [id], onDelete: Cascade)
   linkedItems  ChecklistItemDefinition[]
 
   @@index([organizationId])
