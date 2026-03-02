@@ -24,7 +24,6 @@ import {
   fetchInvoices,
   fetchPaymentMethods,
   createPortalSession,
-  createCheckoutSession,
   cancelSubscription as apiCancelSubscription,
   resumeSubscription as apiResumeSubscription,
   type SubscriptionInfo,
@@ -101,12 +100,10 @@ export default function BillingPage() {
     setCheckoutLoading(true);
     setError(null);
     try {
-      const token = await getToken();
-      const { url } = await createCheckoutSession(token);
-      if (!url) {
-        throw new Error("Checkout session URL is unavailable");
-      }
-      window.location.assign(url);
+      const orgId = subscription?.organizationId;
+      if (!orgId) throw new Error("Organization not loaded yet");
+      const link = `https://buy.stripe.com/eVq28r3Rb8P5f6afWD3Nm00?client_reference_id=${encodeURIComponent(orgId)}`;
+      window.location.assign(link);
     } catch (err: any) {
       setError(err.message || "Failed to start checkout");
     } finally {
