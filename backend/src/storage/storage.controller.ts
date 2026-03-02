@@ -5,7 +5,11 @@ import {
   Body,
   Query,
   BadRequestException,
+  StreamableFile,
+  NotFoundException,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { StorageService } from './storage.service.js';
 import { CurrentUser } from '../auth/decorators/index.js';
 import type { AuthenticatedUser } from '../common/interfaces.js';
@@ -80,5 +84,42 @@ export class StorageController {
     }
 
     return this.storageService.getDownloadUrl(key);
+  }
+
+  @Get('file')
+  async getFile(
+    @CurrentUser() user: any,
+    @Query('key') key: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const authUser = user as AuthenticatedUser;
+    if (!key) {
+      throw new BadRequestException('Missing required query parameter: key');
+    }
+    // Ensure the key belongs to the user's organization
+    if (!key.startsWith(authUser.organizationId + '/')) {
+      throw new BadRequestException('Access denied to this file');
+    }
+
+    try {
+      const file = await this.storageService.getFile(key);
+      const fileName = key.split('/').pop() || 'document';
+
+      if (file.contentType) {
+        res.setHeader('Content-Type', file.contentType);
+      }
+      if (file.contentLength) {
+        res.setHeader('Content-Length', String(file.contentLength));
+      }
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${encodeURIComponent(fileName)}"`,
+      );
+      res.setHeader('Cache-Control', 'private, no-store');
+
+      return new StreamableFile(file.buffer);
+    } catch {
+      throw new NotFoundException('File not found');
+    }
   }
 }

@@ -577,6 +577,7 @@ export class CliniciansService {
       section: string;
       fileName: string;
       mimeType: string | null;
+      storagePath: string;
       downloadUrl: string;
       fileType: string;
     }>[] = [];
@@ -590,6 +591,7 @@ export class CliniciansService {
             section: item.itemDefinition.section,
             fileName: item.docOriginalName || 'document',
             mimeType: item.docMimeType,
+            storagePath: item.docStoragePath!,
             downloadUrl: url,
             fileType: 'document',
           })),
@@ -603,6 +605,7 @@ export class CliniciansService {
             section: 'Signatures',
             fileName: `${item.itemDefinition.label} - Signature.png`,
             mimeType: 'image/png',
+            storagePath: item.signatureImagePath!,
             downloadUrl: url,
             fileType: 'signature_image',
           })),
@@ -616,6 +619,7 @@ export class CliniciansService {
             section: 'Signatures',
             fileName: `${item.itemDefinition.label} - Receipt.json`,
             mimeType: 'application/json',
+            storagePath: item.signedDocPath!,
             downloadUrl: url,
             fileType: 'signature_receipt',
           })),

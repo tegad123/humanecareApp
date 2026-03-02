@@ -51,6 +51,8 @@ import {
 import { getDownloadUrl } from "@/lib/api/clinicians";
 import JSZip from "jszip";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+
 function formatStatus(s: string) {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -125,7 +127,17 @@ export default function ClinicianDetailPage() {
 
       const results = await Promise.allSettled(
         files.map(async (file) => {
-          const res = await fetch(file.downloadUrl);
+          let res: Response;
+          if (file.storagePath && token) {
+            // Use same-origin backend proxy for reliable ZIP assembly (avoids S3 CORS issues).
+            const proxiedUrl = `${API_URL}/storage/file?key=${encodeURIComponent(file.storagePath)}`;
+            res = await fetch(proxiedUrl, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+          } else {
+            // Fallback for older payloads without storagePath.
+            res = await fetch(file.downloadUrl);
+          }
           if (!res.ok) {
             throw new Error(`HTTP ${res.status}`);
           }

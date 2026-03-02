@@ -76,4 +76,26 @@ export class StorageService {
 
     return { url };
   }
+
+  /**
+   * Download the file bytes from S3 for server-side proxying.
+   */
+  async getFile(key: string) {
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+    });
+
+    const result = await this.s3.send(command);
+    if (!result.Body) {
+      throw new Error('File not found');
+    }
+
+    const bytes = await result.Body.transformToByteArray();
+    return {
+      buffer: Buffer.from(bytes),
+      contentType: result.ContentType || null,
+      contentLength: result.ContentLength || null,
+    };
+  }
 }

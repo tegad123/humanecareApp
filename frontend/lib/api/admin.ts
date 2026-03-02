@@ -246,6 +246,7 @@ export interface ClinicianFile {
   section: string;
   fileName: string;
   mimeType: string | null;
+  storagePath: string;
   downloadUrl: string;
   fileType: 'document' | 'signature_image' | 'signature_receipt';
 }
