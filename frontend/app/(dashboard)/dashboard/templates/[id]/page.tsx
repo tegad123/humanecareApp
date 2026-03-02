@@ -13,9 +13,10 @@ import {
   ChevronDown,
   ChevronRight,
   Save,
+  Upload,
 } from 'lucide-react';
 import Link from 'next/link';
-import { Button, Badge, Card, CardContent, Input, Spinner } from '@/components/ui';
+import { Button, Badge, Card, CardContent, Input, Spinner, Modal } from '@/components/ui';
 import {
   fetchTemplate,
   fetchTemplateDocuments,
@@ -28,6 +29,7 @@ import {
 } from '@/lib/api/templates';
 import {
   fetchOrgDocuments,
+  uploadOrgDocument,
   type OrgDocument,
 } from '@/lib/api/org-documents';
 
@@ -54,6 +56,15 @@ export default function TemplateEditorPage() {
   // Available documents for linking
   const [orgDocs, setOrgDocs] = useState<OrgDocument[]>([]);
   const [templateDocs, setTemplateDocs] = useState<TemplateDocument[]>([]);
+
+  // Upload & Link modal state
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadTargetDefId, setUploadTargetDefId] = useState<string | null>(null);
+  const [uploadName, setUploadName] = useState('');
+  const [uploadCategory, setUploadCategory] = useState('form');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // New item form
   const [newItem, setNewItem] = useState({
@@ -140,6 +151,80 @@ export default function TemplateEditorPage() {
     } catch (err: any) {
       alert(err.message || 'Failed to add item');
     }
+  }
+
+  // Upload & Link helpers
+  function openUploadModal(defId: string) {
+    setUploadTargetDefId(defId);
+    setUploadName('');
+    setUploadCategory('form');
+    setUploadFile(null);
+    setUploadError(null);
+    setUploadModalOpen(true);
+  }
+
+  function resetUploadModal() {
+    setUploadModalOpen(false);
+    setUploadTargetDefId(null);
+    setUploadName('');
+    setUploadCategory('form');
+    setUploadFile(null);
+    setUploadError(null);
+  }
+
+  async function handleUploadAndLink() {
+    if (!uploadFile || !uploadName.trim() || !uploadTargetDefId) return;
+
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    if (uploadFile.size > MAX_FILE_SIZE) {
+      setUploadError('File size must be under 10 MB.');
+      return;
+    }
+
+    setUploadLoading(true);
+    setUploadError(null);
+
+    try {
+      const token = await getToken();
+
+      // Step 1: Create org document record + get presigned URL
+      const { document, uploadUrl } = await uploadOrgDocument(token, {
+        name: uploadName.trim(),
+        category: uploadCategory,
+        fileName: uploadFile.name,
+        contentType: uploadFile.type,
+        fileSizeBytes: uploadFile.size,
+      });
+
+      // Step 2: Upload file to S3
+      const uploadResp = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: uploadFile,
+        headers: { 'Content-Type': uploadFile.type },
+      });
+      if (!uploadResp.ok) throw new Error('File upload failed. Please try again.');
+
+      // Step 3: Auto-link document to the target item
+      await updateItemDefinition(token, id, uploadTargetDefId, {
+        linkedDocumentId: document.id,
+      });
+
+      // Step 4: Close modal & refresh
+      resetUploadModal();
+      await load();
+    } catch (err: any) {
+      setUploadError(err.message || 'Something went wrong during upload.');
+    } finally {
+      setUploadLoading(false);
+    }
+  }
+
+  function getLinkedDocName(docId: string): string {
+    const org = orgDocs.find((d) => d.id === docId);
+    if (org) return org.name;
+    const tmpl = templateDocs.find((d) => d.id === docId);
+    if (tmpl) return tmpl.name;
+    return 'Unknown document';
   }
 
   if (loading) {
@@ -310,37 +395,52 @@ export default function TemplateEditorPage() {
                                   : '(document shown for e-signature review)'}
                               </span>
                             </label>
-                            <select
-                              value={item.linkedDocumentId || ''}
-                              onChange={(e) =>
-                                handleUpdateItem(
-                                  item.id,
-                                  'linkedDocumentId',
-                                  e.target.value || null,
-                                )
-                              }
-                              className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
-                            >
-                              <option value="">No linked document</option>
-                              {orgDocs.length > 0 && (
-                                <optgroup label="Organization Documents">
-                                  {orgDocs.map((doc) => (
-                                    <option key={doc.id} value={doc.id}>
-                                      {doc.name} ({doc.category})
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              )}
-                              {templateDocs.length > 0 && (
-                                <optgroup label="Template Documents">
-                                  {templateDocs.map((doc) => (
-                                    <option key={doc.id} value={doc.id}>
-                                      {doc.name}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              )}
-                            </select>
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={item.linkedDocumentId || ''}
+                                onChange={(e) =>
+                                  handleUpdateItem(
+                                    item.id,
+                                    'linkedDocumentId',
+                                    e.target.value || null,
+                                  )
+                                }
+                                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+                              >
+                                <option value="">No linked document</option>
+                                {orgDocs.length > 0 && (
+                                  <optgroup label="Organization Documents">
+                                    {orgDocs.map((doc) => (
+                                      <option key={doc.id} value={doc.id}>
+                                        {doc.name} ({doc.category})
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                                {templateDocs.length > 0 && (
+                                  <optgroup label="Template Documents">
+                                    {templateDocs.map((doc) => (
+                                      <option key={doc.id} value={doc.id}>
+                                        {doc.name}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                              </select>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => openUploadModal(item.id)}
+                              >
+                                <Upload className="h-3.5 w-3.5 mr-1" />
+                                Upload &amp; Link
+                              </Button>
+                            </div>
+                            {item.linkedDocumentId && (
+                              <p className="text-xs text-slate-500 mt-1">
+                                Linked to: {getLinkedDocName(item.linkedDocumentId)}
+                              </p>
+                            )}
                           </div>
                         )}
 
@@ -440,6 +540,94 @@ export default function TemplateEditorPage() {
           Add Item
         </Button>
       )}
+
+      {/* Upload & Link Modal */}
+      <Modal
+        open={uploadModalOpen}
+        onClose={resetUploadModal}
+        title="Upload & Link Document"
+      >
+        <div className="space-y-4">
+          {uploadError && (
+            <div className="rounded-lg bg-danger-50 border border-danger-200 text-danger-700 text-sm p-3">
+              {uploadError}
+            </div>
+          )}
+
+          <Input
+            label="Document Name"
+            value={uploadName}
+            onChange={(e) => setUploadName(e.target.value)}
+            placeholder="e.g., W-9 Form"
+          />
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Category
+            </label>
+            <select
+              value={uploadCategory}
+              onChange={(e) => setUploadCategory(e.target.value)}
+              className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+            >
+              <option value="form">Form</option>
+              <option value="contract">Contract</option>
+              <option value="policy">Policy</option>
+              <option value="agreement">Agreement</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              File
+            </label>
+            <label className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm cursor-pointer hover:border-primary-400 transition">
+              <Upload className="h-4 w-4 text-slate-400" />
+              <span className="text-slate-600 truncate">
+                {uploadFile ? uploadFile.name : 'Choose file...'}
+              </span>
+              <input
+                type="file"
+                className="hidden"
+                accept=".pdf,.doc,.docx"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] || null;
+                  setUploadFile(f);
+                  if (f && !uploadName.trim()) {
+                    setUploadName(f.name.replace(/\.[^.]+$/, ''));
+                  }
+                }}
+              />
+            </label>
+            {uploadFile && (
+              <p className="text-xs text-slate-500 mt-1">
+                {Math.round(uploadFile.size / 1024)} KB
+              </p>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={resetUploadModal}
+              disabled={uploadLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleUploadAndLink}
+              loading={uploadLoading}
+              disabled={!uploadFile || !uploadName.trim() || uploadLoading}
+            >
+              <Upload className="h-3.5 w-3.5 mr-1" />
+              Upload &amp; Link
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

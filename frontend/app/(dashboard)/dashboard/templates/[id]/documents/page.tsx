@@ -3,14 +3,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Upload, FileText, Trash2, Download } from 'lucide-react';
+import { ArrowLeft, Upload, FileText, Trash2, Download, Link2 } from 'lucide-react';
 import Link from 'next/link';
-import { Button, Card, CardContent, Input, Spinner } from '@/components/ui';
+import { Button, Card, CardContent, Input, Spinner, Modal } from '@/components/ui';
 import {
+  fetchTemplate,
   fetchTemplateDocuments,
   uploadTemplateDocument,
   deleteTemplateDocument,
   getDocumentDownloadUrl,
+  updateItemDefinition,
+  type Template,
+  type ItemDefinition,
   type TemplateDocument,
 } from '@/lib/api/templates';
 
@@ -24,11 +28,32 @@ export default function TemplateDocumentsPage() {
   const [file, setFile] = useState<File | null>(null);
   const [docName, setDocName] = useState('');
 
+  // Template items for link-to-item feature
+  const [linkableItems, setLinkableItems] = useState<ItemDefinition[]>([]);
+
+  // Link-to-Item modal state
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [linkDocId, setLinkDocId] = useState<string | null>(null);
+  const [linkDocName, setLinkDocName] = useState('');
+  const [linkTargetDefId, setLinkTargetDefId] = useState('');
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     try {
       const token = await getToken();
-      const data = await fetchTemplateDocuments(token, id);
+      const [data, templateData] = await Promise.all([
+        fetchTemplateDocuments(token, id),
+        fetchTemplate(token, id).catch(() => null),
+      ]);
       setDocuments(data);
+      if (templateData?.itemDefinitions) {
+        setLinkableItems(
+          templateData.itemDefinitions.filter(
+            (def) => def.type === 'file_upload' || def.type === 'e_signature',
+          ),
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -83,6 +108,39 @@ export default function TemplateDocumentsPage() {
       window.open(url, '_blank');
     } catch (err: any) {
       alert(err.message || 'Download failed');
+    }
+  }
+
+  function openLinkModal(docId: string, docName: string) {
+    setLinkDocId(docId);
+    setLinkDocName(docName);
+    setLinkTargetDefId('');
+    setLinkError(null);
+    setLinkModalOpen(true);
+  }
+
+  function closeLinkModal() {
+    setLinkModalOpen(false);
+    setLinkDocId(null);
+    setLinkDocName('');
+    setLinkTargetDefId('');
+    setLinkError(null);
+  }
+
+  async function handleLinkToItem() {
+    if (!linkDocId || !linkTargetDefId) return;
+    setLinkLoading(true);
+    setLinkError(null);
+    try {
+      const token = await getToken();
+      await updateItemDefinition(token, id, linkTargetDefId, {
+        linkedDocumentId: linkDocId,
+      });
+      closeLinkModal();
+    } catch (err: any) {
+      setLinkError(err.message || 'Failed to link document to item.');
+    } finally {
+      setLinkLoading(false);
     }
   }
 
@@ -178,6 +236,14 @@ export default function TemplateDocumentsPage() {
                     <Button
                       size="sm"
                       variant="ghost"
+                      onClick={() => openLinkModal(doc.id, doc.name)}
+                      title="Link to template item"
+                    >
+                      <Link2 className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
                       onClick={() => handleDownload(doc.id)}
                     >
                       <Download className="h-3.5 w-3.5" />
@@ -196,6 +262,72 @@ export default function TemplateDocumentsPage() {
           </div>
         )}
       </div>
+
+      {/* Link to Item Modal */}
+      <Modal
+        open={linkModalOpen}
+        onClose={closeLinkModal}
+        title="Link to Template Item"
+      >
+        <div className="space-y-4">
+          {linkError && (
+            <div className="rounded-lg bg-danger-50 border border-danger-200 text-danger-700 text-sm p-3">
+              {linkError}
+            </div>
+          )}
+
+          <p className="text-sm text-slate-600">
+            Link <span className="font-medium text-slate-900">{linkDocName}</span> to a template item so clinicians can download it.
+          </p>
+
+          {linkableItems.length === 0 ? (
+            <p className="text-sm text-slate-500 py-2">
+              No file upload or e-signature items exist in this template yet. Add items to the template first, then link documents to them.
+            </p>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Select Item
+                </label>
+                <select
+                  value={linkTargetDefId}
+                  onChange={(e) => setLinkTargetDefId(e.target.value)}
+                  className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+                >
+                  <option value="">Choose an item...</option>
+                  {linkableItems.map((def) => (
+                    <option key={def.id} value={def.id}>
+                      {def.label} ({def.type === 'file_upload' ? 'File Upload' : 'E-Signature'})
+                      {def.linkedDocumentId ? ' — already linked' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={closeLinkModal}
+                  disabled={linkLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleLinkToItem}
+                  loading={linkLoading}
+                  disabled={!linkTargetDefId || linkLoading}
+                >
+                  <Link2 className="h-3.5 w-3.5 mr-1" />
+                  Link
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }
