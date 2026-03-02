@@ -78,7 +78,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-3">
             <Link href="/request-access" className="hidden sm:inline-flex text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Request Access</Link>
             <Link href="/sign-in" className="hidden sm:inline-flex text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Sign In</Link>
-            <Link href="/sign-in" className="inline-flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+            <Link href="/request-access" className="inline-flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
               Get Started
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7H11M11 7L8 4M11 7L8 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </Link>
@@ -104,7 +104,7 @@ export default function LandingPage() {
               Credentis automates credential collection, tracks expiration dates, and gives your agency a single source of truth on clinician readiness — so compliance gaps don&apos;t become missed placements.
             </p>
             <div className="flex flex-wrap gap-3">
-              <Link href="/sign-in" className="inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors shadow-lg shadow-primary-600/20">
+              <Link href="/request-access" className="inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors shadow-lg shadow-primary-600/20">
                 Get Started
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8H13M13 8L9.5 4.5M13 8L9.5 11.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </Link>
@@ -124,7 +124,7 @@ export default function LandingPage() {
                   <div className="w-3 h-3 rounded-full bg-slate-300" />
                 </div>
                 <div className="flex-1 mx-4">
-                  <div className="bg-white border border-slate-200 rounded-md px-3 py-1 text-xs text-slate-400 font-mono max-w-xs mx-auto text-center">app.credentis.com/dashboard</div>
+                  <div className="bg-white border border-slate-200 rounded-md px-3 py-1 text-xs text-slate-400 font-mono max-w-xs mx-auto text-center">credentis.app/dashboard</div>
                 </div>
               </div>
               <div className="flex min-h-[420px]">
@@ -455,7 +455,7 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <Link href="/sign-in" className="block w-full text-center bg-primary-600 hover:bg-primary-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-lg shadow-primary-600/20 text-sm">
+                <Link href="/request-access" className="block w-full text-center bg-primary-600 hover:bg-primary-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-lg shadow-primary-600/20 text-sm">
                   Get Started Today
                 </Link>
                 <p className="text-center text-xs text-slate-400 mt-4">One missed placement from a compliance hold pays for 2+ months of Credentis.</p>
@@ -502,7 +502,7 @@ export default function LandingPage() {
             Every day your agency runs on email chains and shared folders is a day you&apos;re exposed to a missed expiration, a delayed placement, and the compliance liability that follows.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
-            <Link href="/sign-in" className="inline-flex items-center gap-2 bg-white text-primary-700 font-bold px-8 py-4 rounded-xl hover:bg-primary-50 transition-colors shadow-xl shadow-primary-800/20 text-base">
+            <Link href="/request-access" className="inline-flex items-center gap-2 bg-white text-primary-700 font-bold px-8 py-4 rounded-xl hover:bg-primary-50 transition-colors shadow-xl shadow-primary-800/20 text-base">
               Get Started Today
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4 9H14M14 9L10 5M14 9L10 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </Link>
