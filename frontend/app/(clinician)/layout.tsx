@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
+import Script from 'next/script';
 import { CredentisLogo } from '@/components/logo';
 import { apiFetch } from '@/lib/api';
 
@@ -46,6 +47,25 @@ export default async function ClinicianLayout({
         </div>
       </header>
       <main className="mx-auto max-w-lg px-4 py-6">{children}</main>
+
+      {/* Tawk.to Live Chat Widget */}
+      <Script
+        id="tawk-to"
+        strategy="afterInteractive"
+        dangerouslySetInnerHTML={{
+          __html: `
+            var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+            (function(){
+              var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+              s1.async=true;
+              s1.src='https://embed.tawk.to/69a07040a29a6d1c30a57eba/1jidbcvhv';
+              s1.charset='UTF-8';
+              s1.setAttribute('crossorigin','*');
+              s0.parentNode.insertBefore(s1,s0);
+            })();
+          `,
+        }}
+      />
     </div>
   );
 }
