@@ -51,4 +51,8 @@ export class SubmitItemDto {
   @IsOptional()
   @IsBoolean()
   agreement?: boolean;
+
+  @IsOptional()
+  @IsString()
+  signatureImage?: string; // base64 PNG data URL from canvas
 }

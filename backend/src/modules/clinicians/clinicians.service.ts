@@ -560,7 +560,11 @@ export class CliniciansService {
       where: {
         clinicianId,
         organizationId,
-        docStoragePath: { not: null },
+        OR: [
+          { docStoragePath: { not: null } },
+          { signedDocPath: { not: null } },
+          { signatureImagePath: { not: null } },
+        ],
       },
       include: {
         itemDefinition: { select: { label: true, section: true } },
@@ -568,18 +572,58 @@ export class CliniciansService {
       orderBy: { itemDefinition: { sortOrder: 'asc' } },
     });
 
-    const files = await Promise.all(
-      items.map(async (item) => {
-        const { url } = await this.storage.getDownloadUrl(item.docStoragePath!);
-        return {
-          label: item.itemDefinition.label,
-          section: item.itemDefinition.section,
-          fileName: item.docOriginalName || 'document',
-          mimeType: item.docMimeType,
-          downloadUrl: url,
-        };
-      }),
-    );
+    const filePromises: Promise<{
+      label: string;
+      section: string;
+      fileName: string;
+      mimeType: string | null;
+      downloadUrl: string;
+      fileType: string;
+    }>[] = [];
+
+    for (const item of items) {
+      // Uploaded document files (file_upload items)
+      if (item.docStoragePath) {
+        filePromises.push(
+          this.storage.getDownloadUrl(item.docStoragePath).then(({ url }) => ({
+            label: item.itemDefinition.label,
+            section: item.itemDefinition.section,
+            fileName: item.docOriginalName || 'document',
+            mimeType: item.docMimeType,
+            downloadUrl: url,
+            fileType: 'document',
+          })),
+        );
+      }
+      // Drawn signature images (e-signature items)
+      if (item.signatureImagePath) {
+        filePromises.push(
+          this.storage.getDownloadUrl(item.signatureImagePath).then(({ url }) => ({
+            label: item.itemDefinition.label,
+            section: 'Signatures',
+            fileName: `${item.itemDefinition.label} - Signature.png`,
+            mimeType: 'image/png',
+            downloadUrl: url,
+            fileType: 'signature_image',
+          })),
+        );
+      }
+      // Signature receipts (e-signature items)
+      if (item.signedDocPath) {
+        filePromises.push(
+          this.storage.getDownloadUrl(item.signedDocPath).then(({ url }) => ({
+            label: item.itemDefinition.label,
+            section: 'Signatures',
+            fileName: `${item.itemDefinition.label} - Receipt.json`,
+            mimeType: 'application/json',
+            downloadUrl: url,
+            fileType: 'signature_receipt',
+          })),
+        );
+      }
+    }
+
+    const files = await Promise.all(filePromises);
 
     return {
       clinicianName: `${clinician.firstName} ${clinician.lastName}`,

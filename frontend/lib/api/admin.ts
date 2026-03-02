@@ -247,6 +247,7 @@ export interface ClinicianFile {
   fileName: string;
   mimeType: string | null;
   downloadUrl: string;
+  fileType: 'document' | 'signature_image' | 'signature_receipt';
 }
 
 export async function fetchClinicianFiles(token: string | null, clinicianId: string) {

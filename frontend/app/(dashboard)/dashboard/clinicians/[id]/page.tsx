@@ -464,27 +464,56 @@ export default function ClinicianDetailPage() {
                               </p>
                             )}
                             {item.signerName && (
-                              <div className="flex items-center gap-1 mt-1 text-xs text-slate-500">
-                                <PenTool className="h-3 w-3" />
-                                <span>
-                                  Signed by {item.signerName}
-                                  {item.signatureTimestamp && (
-                                    <>
-                                      {" "}
-                                      on{" "}
-                                      {new Date(
-                                        item.signatureTimestamp,
-                                      ).toLocaleDateString()}
-                                    </>
-                                  )}
-                                </span>
+                              <div className="mt-2 space-y-2">
+                                <div className="flex items-center gap-1 text-xs text-slate-500">
+                                  <PenTool className="h-3 w-3" />
+                                  <span>
+                                    Signed by {item.signerName}
+                                    {item.signatureTimestamp && (
+                                      <>
+                                        {" "}
+                                        on{" "}
+                                        {new Date(
+                                          item.signatureTimestamp,
+                                        ).toLocaleDateString()}
+                                      </>
+                                    )}
+                                  </span>
+                                </div>
+                                {item.signatureImagePath && (
+                                  <button
+                                    onClick={() =>
+                                      handleDownload(item.signatureImagePath!)
+                                    }
+                                    className="block"
+                                    title="Click to download signature"
+                                  >
+                                    <div className="inline-block rounded border border-slate-200 bg-white px-2 py-1">
+                                      <span className="text-xs text-primary-600 flex items-center gap-1">
+                                        <PenTool className="h-3 w-3" />
+                                        View Signature
+                                      </span>
+                                    </div>
+                                  </button>
+                                )}
+                                {item.signedDocPath && (
+                                  <button
+                                    onClick={() =>
+                                      handleDownload(item.signedDocPath!)
+                                    }
+                                    className="text-xs text-primary-600 hover:text-primary-700 underline flex items-center gap-1"
+                                  >
+                                    <Download className="h-3 w-3" />
+                                    Download Receipt
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
 
                           {/* Actions */}
                           <div className="flex items-center gap-2 shrink-0">
-                            {item.docStoragePath && (
+                            {(item.docStoragePath || item.signatureImagePath) && (
                               <>
                                 <button
                                   onClick={() => setPreviewItem(item)}
@@ -495,7 +524,10 @@ export default function ClinicianDetailPage() {
                                 </button>
                                 <button
                                   onClick={() =>
-                                    handleDownload(item.docStoragePath!)
+                                    handleDownload(
+                                      item.docStoragePath ||
+                                        item.signatureImagePath!,
+                                    )
                                   }
                                   className="p-1.5 text-slate-400 hover:text-primary-600 transition"
                                   title="Download document"
@@ -536,6 +568,9 @@ export default function ClinicianDetailPage() {
           docStoragePath={reviewItem.docStoragePath}
           docOriginalName={reviewItem.docOriginalName}
           docMimeType={reviewItem.docMimeType}
+          signatureImagePath={reviewItem.signatureImagePath}
+          signerName={reviewItem.signerName}
+          signatureTimestamp={reviewItem.signatureTimestamp}
         />
       )}
 
@@ -545,9 +580,15 @@ export default function ClinicianDetailPage() {
           open={!!previewItem}
           onClose={() => setPreviewItem(null)}
           itemLabel={previewItem.itemDefinition.label}
-          docStoragePath={previewItem.docStoragePath}
-          docOriginalName={previewItem.docOriginalName}
-          docMimeType={previewItem.docMimeType}
+          docStoragePath={previewItem.docStoragePath || previewItem.signatureImagePath}
+          docOriginalName={
+            previewItem.docOriginalName ||
+            (previewItem.signatureImagePath ? 'Signature.png' : null)
+          }
+          docMimeType={
+            previewItem.docMimeType ||
+            (previewItem.signatureImagePath ? 'image/png' : null)
+          }
         />
       )}
     </div>

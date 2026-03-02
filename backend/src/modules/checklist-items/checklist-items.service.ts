@@ -127,9 +127,12 @@ export class ChecklistItemsService {
         break;
 
       case 'e_signature': {
-        // Enhanced e-signature: typed name + agreement + timestamp + IP + hash
+        // Enhanced e-signature: typed name + drawn signature + agreement
         if (!dto.signerName) throw new BadRequestException('Signer name is required for e-signature');
         if (!dto.agreement) throw new BadRequestException('Agreement must be accepted for e-signature');
+        if (!dto.signatureImage) throw new BadRequestException('Drawn signature is required');
+
+        const AGREEMENT_TEXT = 'I have read and agree to the terms of this document. I understand that this constitutes my legally binding electronic signature.';
 
         const signatureTimestamp = new Date();
         const signerIp = clientIp || 'unknown';
@@ -142,36 +145,53 @@ export class ChecklistItemsService {
         updateData.signatureTimestamp = signatureTimestamp;
         updateData.signerIp = signerIp;
         updateData.signatureHash = signatureHash;
-        updateData.status = 'approved' as ChecklistItemStatus; // auto-approve
-        updateData.reviewedAt = signatureTimestamp;
+        updateData.agreementText = AGREEMENT_TEXT;
+        updateData.status = 'submitted' as ChecklistItemStatus; // requires admin review
 
-        // If item definition has a linked document, store a signature receipt
-        if (item.itemDefinition.linkedDocumentId) {
-          const receiptKey = `${user.organizationId}/${item.clinicianId}/${itemId}/signature-receipt-${randomUUID()}.json`;
-          const receipt = {
-            signerName: dto.signerName,
-            signatureTimestamp: signatureTimestamp.toISOString(),
-            signerIp,
-            signatureHash,
-            itemId,
-            clinicianId: item.clinicianId,
-            linkedDocumentId: item.itemDefinition.linkedDocumentId,
-            itemLabel: item.itemDefinition.label,
-          };
+        // Upload drawn signature image to S3
+        const sigImageKey = `${user.organizationId}/${item.clinicianId}/${itemId}/signature-${randomUUID()}.png`;
+        try {
+          // Strip data URL prefix: "data:image/png;base64,..." → raw base64
+          const base64Data = dto.signatureImage.replace(/^data:image\/\w+;base64,/, '');
+          const imageBuffer = Buffer.from(base64Data, 'base64');
 
-          // Upload receipt to S3
-          const { url } = await this.storage.getUploadUrlForKey(receiptKey, 'application/json');
-          try {
-            await fetch(url, {
-              method: 'PUT',
-              body: JSON.stringify(receipt),
-              headers: { 'Content-Type': 'application/json' },
-            });
-            updateData.signedDocPath = receiptKey;
-          } catch {
-            // Non-blocking: receipt upload failure doesn't prevent signature
-            updateData.signedDocPath = null;
-          }
+          const { url: sigUploadUrl } = await this.storage.getUploadUrlForKey(sigImageKey, 'image/png');
+          await fetch(sigUploadUrl, {
+            method: 'PUT',
+            body: imageBuffer,
+            headers: { 'Content-Type': 'image/png' },
+          });
+          updateData.signatureImagePath = sigImageKey;
+        } catch {
+          // Non-blocking: image upload failure doesn't prevent signature
+          updateData.signatureImagePath = null;
+        }
+
+        // Always store a signature receipt (regardless of linked document)
+        const receiptKey = `${user.organizationId}/${item.clinicianId}/${itemId}/signature-receipt-${randomUUID()}.json`;
+        const receipt = {
+          signerName: dto.signerName,
+          signatureTimestamp: signatureTimestamp.toISOString(),
+          signerIp,
+          signatureHash,
+          agreementText: AGREEMENT_TEXT,
+          signatureImagePath: updateData.signatureImagePath || null,
+          itemId,
+          clinicianId: item.clinicianId,
+          linkedDocumentId: item.itemDefinition.linkedDocumentId || null,
+          itemLabel: item.itemDefinition.label,
+        };
+
+        const { url: receiptUploadUrl } = await this.storage.getUploadUrlForKey(receiptKey, 'application/json');
+        try {
+          await fetch(receiptUploadUrl, {
+            method: 'PUT',
+            body: JSON.stringify(receipt, null, 2),
+            headers: { 'Content-Type': 'application/json' },
+          });
+          updateData.signedDocPath = receiptKey;
+        } catch {
+          updateData.signedDocPath = null;
         }
         break;
       }

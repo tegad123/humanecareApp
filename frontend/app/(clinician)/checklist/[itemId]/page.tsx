@@ -14,7 +14,7 @@ import {
   PenTool,
 } from 'lucide-react';
 import Link from 'next/link';
-import { Button, Badge, Card, CardContent, Input, Spinner } from '@/components/ui';
+import { Button, Badge, Card, CardContent, Input, Spinner, SignaturePad } from '@/components/ui';
 import {
   fetchMyChecklist,
   submitChecklistItem,
@@ -48,6 +48,7 @@ export default function ChecklistItemPage() {
   // E-signature state
   const [signerName, setSignerName] = useState('');
   const [agreement, setAgreement] = useState(false);
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [linkedDocUrl, setLinkedDocUrl] = useState<string | null>(null);
   const [linkedDocName, setLinkedDocName] = useState<string | null>(null);
 
@@ -159,6 +160,11 @@ export default function ChecklistItemPage() {
             setSubmitting(false);
             return;
           }
+          if (!signatureDataUrl) {
+            setError('Please draw your signature in the box');
+            setSubmitting(false);
+            return;
+          }
           if (!agreement) {
             setError('You must agree to the terms to sign');
             setSubmitting(false);
@@ -167,6 +173,7 @@ export default function ChecklistItemPage() {
           payload.valueText = 'signed';
           payload.signerName = signerName.trim();
           payload.agreement = true;
+          payload.signatureImage = signatureDataUrl;
           break;
       }
 
@@ -182,7 +189,7 @@ export default function ChecklistItemPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [item, file, textValue, dateValue, selectValue, expiresAt, signerName, agreement, getToken, router]);
+  }, [item, file, textValue, dateValue, selectValue, expiresAt, signerName, agreement, signatureDataUrl, getToken, router]);
 
   if (loading) {
     return (
@@ -505,11 +512,17 @@ export default function ChecklistItemPage() {
                       placeholder="e.g., Jane A. Doe"
                       className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     />
-                    {signerName.trim() && (
-                      <p className="mt-2 text-lg font-serif italic text-slate-800">
-                        {signerName}
-                      </p>
-                    )}
+                  </div>
+
+                  {/* Drawn signature pad */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Draw your signature
+                    </label>
+                    <SignaturePad
+                      onEnd={(dataUrl) => setSignatureDataUrl(dataUrl || null)}
+                      height={150}
+                    />
                   </div>
 
                   {/* Agreement checkbox */}
@@ -526,7 +539,7 @@ export default function ChecklistItemPage() {
                   </label>
 
                   {/* Timestamp preview */}
-                  {signerName.trim() && agreement && (
+                  {signerName.trim() && signatureDataUrl && agreement && (
                     <p className="text-xs text-slate-500">
                       Signing as <span className="font-medium">{signerName.trim()}</span> on{' '}
                       {new Date().toLocaleString()}

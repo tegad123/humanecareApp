@@ -57,6 +57,8 @@ export interface ChecklistItem {
   signerIp: string | null;
   signatureHash: string | null;
   signedDocPath: string | null;
+  signatureImagePath: string | null;
+  agreementText: string | null;
   itemDefinition: ChecklistItemDefinition;
 }
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { Download, FileText, Eye } from 'lucide-react';
+import { Download, FileText, Eye, PenTool } from 'lucide-react';
 import { Modal, Button, Spinner } from '@/components/ui';
 import { getDownloadUrl } from '@/lib/api/clinicians';
 
@@ -24,6 +24,9 @@ interface ReviewModalProps {
   docStoragePath?: string | null;
   docOriginalName?: string | null;
   docMimeType?: string | null;
+  signatureImagePath?: string | null;
+  signerName?: string | null;
+  signatureTimestamp?: string | null;
 }
 
 export function ReviewModal({
@@ -35,6 +38,9 @@ export function ReviewModal({
   docStoragePath,
   docOriginalName,
   docMimeType,
+  signatureImagePath,
+  signerName,
+  signatureTimestamp,
 }: ReviewModalProps) {
   const { getToken } = useAuth();
   const [mode, setMode] = useState<'choose' | 'reject'>('choose');
@@ -46,6 +52,28 @@ export function ReviewModal({
   const [docUrl, setDocUrl] = useState<string | null>(null);
   const [docLoading, setDocLoading] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
+
+  // Signature image state
+  const [sigUrl, setSigUrl] = useState<string | null>(null);
+
+  // Fetch signature image URL
+  useEffect(() => {
+    if (!open || !signatureImagePath) {
+      setSigUrl(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken();
+        const { url } = await getDownloadUrl(token, signatureImagePath);
+        if (!cancelled) setSigUrl(url);
+      } catch {
+        // Non-critical
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, signatureImagePath, getToken]);
 
   // Fetch presigned URL when modal opens with a document
   useEffect(() => {
@@ -201,6 +229,31 @@ export function ReviewModal({
                   </div>
                 )}
               </>
+            )}
+          </div>
+        )}
+
+        {/* Signature info (for e-signature items) */}
+        {signerName && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <PenTool className="h-4 w-4 text-slate-500" />
+              <span className="text-sm font-medium text-slate-700">Electronic Signature</span>
+            </div>
+            <p className="text-sm text-slate-600">
+              Signed by <span className="font-medium">{signerName}</span>
+              {signatureTimestamp && (
+                <> on {new Date(signatureTimestamp).toLocaleString()}</>
+              )}
+            </p>
+            {sigUrl && (
+              <div className="rounded border border-slate-200 bg-white p-2">
+                <img
+                  src={sigUrl}
+                  alt={`Signature by ${signerName}`}
+                  className="max-h-[100px] mx-auto"
+                />
+              </div>
             )}
           </div>
         )}

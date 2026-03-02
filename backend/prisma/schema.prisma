@@ -236,6 +236,8 @@ model ClinicianChecklistItem {
   signerIp                String?             @map("signer_ip")
   signatureHash           String?             @map("signature_hash")
   signedDocPath           String?             @map("signed_doc_path")
+  signatureImagePath      String?             @map("signature_image_path")
+  agreementText           String?             @map("agreement_text") @db.Text
   createdAt               DateTime            @default(now()) @map("created_at")
   updatedAt               DateTime            @updatedAt @map("updated_at")
 
