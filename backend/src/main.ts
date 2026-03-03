@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { runWithRequestContext } from './common/request-context.js';
+import type { Request, Response, NextFunction } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
@@ -34,7 +35,7 @@ async function bootstrap() {
     }),
   );
 
-  app.use((req, res, next) => {
+  app.use((req: Request, res: Response, next: NextFunction) => {
     const requestIdHeader = req.headers['x-request-id'];
     const requestId =
       typeof requestIdHeader === 'string' && requestIdHeader.trim().length > 0

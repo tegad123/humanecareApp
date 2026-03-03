@@ -27,11 +27,11 @@ export class AuditLogsService {
 
   constructor(private prisma: PrismaService) {}
 
-  private normalizeJsonValue(input: unknown): Prisma.InputJsonValue {
+  private normalizeJsonValue(input: unknown): unknown {
     if (input === null || input === undefined) {
-      return Prisma.JsonNull;
+      return null;
     }
-    return input as Prisma.InputJsonValue;
+    return input;
   }
 
   private canonicalizeValue(value: unknown): unknown {

@@ -21,6 +21,7 @@ import {
   fetchPolicyDocuments,
   fetchQapiSummary,
   fetchQapiTrends,
+  fetchRetentionHealth,
   getOrgExport,
   listCorrectiveActions,
   listLegalHolds,
@@ -33,6 +34,7 @@ import {
   type PolicyDocument,
   type QapiSummary,
   type QapiTrends,
+  type RetentionHealth,
 } from '@/lib/api/exports';
 
 function formatDateTime(value?: string | null) {
@@ -72,6 +74,7 @@ export default function ComplianceCenterPage() {
 
   const [qapiSummary, setQapiSummary] = useState<QapiSummary | null>(null);
   const [qapiTrends, setQapiTrends] = useState<QapiTrends | null>(null);
+  const [retentionHealth, setRetentionHealth] = useState<RetentionHealth | null>(null);
 
   const [correctiveActions, setCorrectiveActions] = useState<CorrectiveAction[]>([]);
   const [creatingAction, setCreatingAction] = useState(false);
@@ -95,6 +98,7 @@ export default function ComplianceCenterPage() {
           fetchQapiSummary(token, rangeDays).then((summary) => setQapiSummary(summary)),
           fetchQapiTrends(token, rangeDays).then((trends) => setQapiTrends(trends)),
           listCorrectiveActions(token).then((actions) => setCorrectiveActions(actions)),
+          fetchRetentionHealth(token).then((health) => setRetentionHealth(health)),
         );
       } else {
         setExportJobs([]);
@@ -102,6 +106,7 @@ export default function ComplianceCenterPage() {
         setQapiSummary(null);
         setQapiTrends(null);
         setCorrectiveActions([]);
+        setRetentionHealth(null);
       }
 
       if (canReadBillingState(roleValue)) {
@@ -327,6 +332,35 @@ export default function ComplianceCenterPage() {
                 Grace Period Ends: {formatDateTime(subscription.gracePeriodEndsAt)}
               </span>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {retentionHealth && (
+        <Card>
+          <CardHeader>
+            <h2 className="text-sm font-semibold text-slate-900">Retention and Access Automation</h2>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <Badge variant="info">
+                Retention Days: {retentionHealth.retentionDays ?? 'N/A'}
+              </Badge>
+              <Badge variant={retentionHealth.activeLegalHolds > 0 ? 'warning' : 'success'}>
+                Active Legal Holds: {retentionHealth.activeLegalHolds}
+              </Badge>
+            </div>
+            <p className="text-xs text-slate-500">
+              Last retention cleanup:{' '}
+              {retentionHealth.retentionCleanupLastRun
+                ? formatDateTime(retentionHealth.retentionCleanupLastRun.finishedAt)
+                : 'Never'}
+              . Last access mode transition run:{' '}
+              {retentionHealth.accessModeTransitionLastRun
+                ? formatDateTime(retentionHealth.accessModeTransitionLastRun.finishedAt)
+                : 'Never'}
+              .
+            </p>
           </CardContent>
         </Card>
       )}

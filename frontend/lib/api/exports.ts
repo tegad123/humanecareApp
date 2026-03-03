@@ -60,6 +60,33 @@ export interface QapiTrends {
   points: QapiTrendsPoint[];
 }
 
+export interface RetentionHealth {
+  accessMode: 'active' | 'read_only' | 'suspended';
+  gracePeriodEndsAt: string | null;
+  retentionDays: number | null;
+  activeLegalHolds: number;
+  retentionCleanupLastRun: {
+    id: string;
+    status: string;
+    startedAt: string;
+    finishedAt: string | null;
+    processedCount: number;
+    successCount: number;
+    failureCount: number;
+    errorMessage: string | null;
+  } | null;
+  accessModeTransitionLastRun: {
+    id: string;
+    status: string;
+    startedAt: string;
+    finishedAt: string | null;
+    processedCount: number;
+    successCount: number;
+    failureCount: number;
+    errorMessage: string | null;
+  } | null;
+}
+
 export async function createOrgExport(token: string | null) {
   return clientApiFetch<OrganizationExportJob>('/exports/org', token, {
     method: 'POST',
@@ -103,6 +130,10 @@ export async function fetchQapiSummary(token: string | null, days = 90) {
 
 export async function fetchQapiTrends(token: string | null, days = 90) {
   return clientApiFetch<QapiTrends>(`/exports/qapi/trends?days=${days}`, token);
+}
+
+export async function fetchRetentionHealth(token: string | null) {
+  return clientApiFetch<RetentionHealth>('/jobs/retention-health', token);
 }
 
 export async function listCorrectiveActions(token: string | null) {
