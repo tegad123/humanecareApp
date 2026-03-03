@@ -9,6 +9,7 @@ import {
 import { TemplateCustomizationService } from './template-customization.service.js';
 import { CloneTemplateDto } from './dto/clone-template.dto.js';
 import { CreateItemDefinitionDto } from './dto/create-item-definition.dto.js';
+import { PublishTemplateDto } from './dto/publish-template.dto.js';
 import { UpdateItemDefinitionDto } from './dto/update-item-definition.dto.js';
 import { ReorderItemsDto } from './dto/reorder-items.dto.js';
 import { Roles } from '../../auth/decorators/index.js';
@@ -28,6 +29,17 @@ export class TemplateCustomizationController {
   ) {
     const authUser = user as AuthenticatedUser;
     return this.service.cloneTemplate(id, authUser, dto.name);
+  }
+
+  @Post(':id/publish')
+  @Roles('super_admin', 'admin', 'compliance')
+  publishTemplate(
+    @Param('id') id: string,
+    @Body() dto: PublishTemplateDto,
+    @CurrentUser() user: any,
+  ) {
+    const authUser = user as AuthenticatedUser;
+    return this.service.publishTemplate(id, dto, authUser);
   }
 
   @Patch(':templateId/items/reorder')

@@ -55,11 +55,34 @@ export interface ChecklistItem {
   signerName: string | null;
   signatureTimestamp: string | null;
   signerIp: string | null;
+  signerUserAgent?: string | null;
+  signerTimezoneOffsetMinutes?: number | null;
   signatureHash: string | null;
   signedDocPath: string | null;
   signatureImagePath: string | null;
+  signatureCertificatePath?: string | null;
   agreementText: string | null;
   itemDefinition: ChecklistItemDefinition;
+}
+
+export interface SignatureCertificate {
+  id: string;
+  checklistItemId: string;
+  signerName: string;
+  signerAccountId: string | null;
+  signerIp: string | null;
+  signerUserAgent: string | null;
+  signerTimezoneOffsetMinutes: number | null;
+  signedAt: string;
+  linkedDocumentId: string | null;
+  linkedDocumentPath: string | null;
+  linkedDocumentHash: string;
+  linkedDocumentVersion: number | null;
+  agreementHash: string;
+  certificateStoragePath: string;
+  certificateJson: Record<string, any> | null;
+  createdAt: string;
+  downloadUrl: string | null;
 }
 
 export interface ClinicianProgress {
@@ -102,6 +125,16 @@ export async function submitChecklistItem(
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+export async function getSignatureCertificate(
+  token: string | null,
+  itemId: string,
+) {
+  return clientApiFetch<SignatureCertificate>(
+    `/checklist-items/${itemId}/signature-certificate`,
+    token,
+  );
 }
 
 export async function getUploadUrl(

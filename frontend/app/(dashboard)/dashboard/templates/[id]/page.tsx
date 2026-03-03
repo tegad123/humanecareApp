@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Save,
   Upload,
+  ShieldCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button, Badge, Card, CardContent, Input, Spinner, Modal } from '@/components/ui';
@@ -23,6 +24,7 @@ import {
   updateItemDefinition,
   createItemDefinition,
   deleteItemDefinition,
+  publishTemplate,
   type Template,
   type ItemDefinition,
   type TemplateDocument,
@@ -65,6 +67,19 @@ export default function TemplateEditorPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
+  const [publishChecklist, setPublishChecklist] = useState({
+    reviewedLicense: false,
+    reviewedBackgroundCheck: false,
+    reviewedExclusionCheck: false,
+    reviewedLiabilityInsurance: false,
+    reviewedOrientation: false,
+    reviewedStateSpecificItems: false,
+    attestationAccepted: false,
+    jurisdictionState: '',
+  });
 
   // New item form
   const [newItem, setNewItem] = useState({
@@ -219,6 +234,36 @@ export default function TemplateEditorPage() {
     }
   }
 
+  async function handlePublishTemplate() {
+    setPublishing(true);
+    setPublishError(null);
+    setPublishSuccess(null);
+    try {
+      const token = await getToken();
+      const result = await publishTemplate(token, id, {
+        ...publishChecklist,
+        jurisdictionState:
+          publishChecklist.jurisdictionState.trim() || undefined,
+      });
+      setTemplate((prev) =>
+        prev
+          ? {
+              ...prev,
+              publishedRevision: result.publishedRevision,
+              lastPublishedAt: result.publishedAt,
+            }
+          : prev,
+      );
+      setPublishSuccess(
+        `Published revision ${result.publishedRevision} at ${new Date(result.publishedAt).toLocaleString()}.`,
+      );
+    } catch (err: any) {
+      setPublishError(err.message || 'Failed to publish template');
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   function getLinkedDocName(docId: string): string {
     const org = orgDocs.find((d) => d.id === docId);
     if (org) return org.name;
@@ -269,6 +314,106 @@ export default function TemplateEditorPage() {
           </Button>
         </div>
       </div>
+
+      <Card>
+        <CardContent className="space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">
+                Template Publish Checklist
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Publishing records a compliance attestation and increments a revision.
+              </p>
+            </div>
+            <Badge variant="neutral">
+              Revision {template.publishedRevision ?? 0}
+            </Badge>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            {[
+              ['reviewedLicense', 'License requirements reviewed'],
+              ['reviewedBackgroundCheck', 'Background check requirements reviewed'],
+              ['reviewedExclusionCheck', 'Exclusion/OIG checks reviewed'],
+              ['reviewedLiabilityInsurance', 'Liability insurance requirements reviewed'],
+              ['reviewedOrientation', 'Orientation requirements reviewed'],
+              ['reviewedStateSpecificItems', 'State-specific requirements reviewed'],
+            ].map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={(publishChecklist as any)[key]}
+                  onChange={(e) =>
+                    setPublishChecklist((prev) => ({
+                      ...prev,
+                      [key]: e.target.checked,
+                    }))
+                  }
+                  className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-slate-700">
+              Jurisdiction (optional)
+            </label>
+            <input
+              value={publishChecklist.jurisdictionState}
+              onChange={(e) =>
+                setPublishChecklist((prev) => ({
+                  ...prev,
+                  jurisdictionState: e.target.value,
+                }))
+              }
+              className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="e.g., Texas"
+            />
+          </div>
+
+          <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <input
+              type="checkbox"
+              checked={publishChecklist.attestationAccepted}
+              onChange={(e) =>
+                setPublishChecklist((prev) => ({
+                  ...prev,
+                  attestationAccepted: e.target.checked,
+                }))
+              }
+              className="mt-0.5 rounded border-amber-400 text-primary-600 focus:ring-primary-500"
+            />
+            I attest this template meets applicable federal, state, accreditation, and payer requirements for this role in my jurisdiction.
+          </label>
+
+          {template.lastPublishedAt && (
+            <p className="text-xs text-slate-500">
+              Last published at {new Date(template.lastPublishedAt).toLocaleString()}.
+            </p>
+          )}
+
+          {publishError && (
+            <div className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-xs text-danger-700">
+              {publishError}
+            </div>
+          )}
+          {publishSuccess && (
+            <div className="rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-xs text-success-700">
+              {publishSuccess}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button size="sm" onClick={handlePublishTemplate} loading={publishing}>
+              <ShieldCheck className="h-3.5 w-3.5 mr-1" />
+              Publish Template
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Sections */}
       {sections.map((section) => {

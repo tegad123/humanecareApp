@@ -8,7 +8,6 @@ import {
   AlertCircle,
   CheckCircle,
   Trash2,
-  ChevronDown,
 } from 'lucide-react';
 import {
   Card,
@@ -23,7 +22,9 @@ import {
 import { clientApiFetch } from '@/lib/api-client';
 import {
   fetchTeamMembers,
+  fetchOrganizationComplianceSettings,
   inviteTeamMember,
+  updateOrganizationComplianceSettings,
   updateMemberRole,
   removeMember,
   type TeamMember,
@@ -38,6 +39,17 @@ const ROLE_OPTIONS = [
   { value: 'compliance', label: 'Compliance', description: 'Review documents and compliance items' },
   { value: 'scheduler', label: 'Scheduler', description: 'Manage scheduling tasks' },
   { value: 'payroll', label: 'Payroll', description: 'Access payroll-related information' },
+] as const;
+
+const TIMEZONE_OPTIONS = [
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Phoenix',
+  'America/Los_Angeles',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+  'UTC',
 ] as const;
 
 function roleBadgeVariant(role: string): 'info' | 'success' | 'warning' | 'neutral' {
@@ -75,11 +87,18 @@ export default function SettingsPage() {
     id: string;
     role: string;
     organizationId: string;
-    organization?: { name: string };
+    organization?: {
+      name: string;
+      requireDualApprovalForHighRiskOverride?: boolean;
+    };
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [dualApprovalEnabled, setDualApprovalEnabled] = useState(false);
+  const [dualApprovalSaving, setDualApprovalSaving] = useState(false);
+  const [organizationTimezone, setOrganizationTimezone] = useState('');
+  const [organizationRetentionDays, setOrganizationRetentionDays] = useState(2555);
 
   // Invite modal
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -100,12 +119,18 @@ export default function SettingsPage() {
   const load = useCallback(async () => {
     try {
       const token = await getToken();
-      const [me, teamData] = await Promise.all([
+      const [me, teamData, orgSettings] = await Promise.all([
         clientApiFetch<any>('/users/me', token),
         fetchTeamMembers(token),
+        fetchOrganizationComplianceSettings(token),
       ]);
       setCurrentUser(me);
       setMembers(teamData);
+      setDualApprovalEnabled(
+        Boolean(orgSettings.requireDualApprovalForHighRiskOverride),
+      );
+      setOrganizationTimezone(orgSettings.timezone || '');
+      setOrganizationRetentionDays(orgSettings.retentionDays || 2555);
     } catch (err: any) {
       setError(err.message || 'Failed to load settings');
     } finally {
@@ -201,6 +226,38 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleSaveComplianceSettings() {
+    if (!organizationTimezone) {
+      setError('Organization timezone is required before saving compliance settings');
+      return;
+    }
+    if (organizationRetentionDays < 30 || organizationRetentionDays > 3650) {
+      setError('Retention days must be between 30 and 3650.');
+      return;
+    }
+    setDualApprovalSaving(true);
+    setError(null);
+    try {
+      const token = await getToken();
+      const updated = await updateOrganizationComplianceSettings(token, {
+        requireDualApprovalForHighRiskOverride: dualApprovalEnabled,
+        timezone: organizationTimezone,
+        retentionDays: organizationRetentionDays,
+      });
+      setDualApprovalEnabled(
+        Boolean(updated.requireDualApprovalForHighRiskOverride),
+      );
+      setOrganizationTimezone(updated.timezone || '');
+      setOrganizationRetentionDays(updated.retentionDays || 2555);
+      setSuccessMsg('Compliance setting updated');
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to update compliance setting');
+    } finally {
+      setDualApprovalSaving(false);
+    }
+  }
+
   /* ── Render ── */
 
   if (loading) {
@@ -247,6 +304,89 @@ export default function SettingsPage() {
           <p className="text-sm font-medium text-red-800">{error}</p>
         </div>
       )}
+
+      <Card>
+        <CardHeader>
+          <h2 className="text-sm font-semibold text-slate-900">
+            Compliance Controls
+          </h2>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={dualApprovalEnabled}
+              onChange={(e) => setDualApprovalEnabled(e.target.checked)}
+              disabled={!isAdmin || dualApprovalSaving}
+              className="mt-1 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+            />
+            <div>
+              <p className="text-sm font-medium text-slate-800">
+                Require dual approval for high-risk overrides
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                When enabled, high-risk readiness overrides require a second
+                approver in the same organization.
+              </p>
+            </div>
+          </label>
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-slate-700">
+              Organization Timezone
+            </label>
+            <select
+              value={organizationTimezone}
+              onChange={(e) => setOrganizationTimezone(e.target.value)}
+              disabled={!isAdmin || dualApprovalSaving}
+              className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="">Select timezone</option>
+              {TIMEZONE_OPTIONS.map((tz) => (
+                <option key={tz} value={tz}>
+                  {tz}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-slate-500">
+              Reminder scheduling and compliance timestamps use this timezone.
+            </p>
+          </div>
+          <Input
+            label="Retention Days"
+            type="number"
+            min={30}
+            max={3650}
+            value={organizationRetentionDays}
+            onChange={(e) =>
+              setOrganizationRetentionDays(Number(e.target.value || 0))
+            }
+            disabled={!isAdmin || dualApprovalSaving}
+          />
+          <p className="text-xs text-slate-500">
+            Governs default data retention window for your organization, except where legal hold applies.
+          </p>
+          {!organizationTimezone && (
+            <p className="text-xs text-amber-700">
+              Set your organization timezone before relying on reminder timings.
+            </p>
+          )}
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              onClick={handleSaveComplianceSettings}
+              loading={dualApprovalSaving}
+              disabled={
+                !isAdmin ||
+                !organizationTimezone ||
+                organizationRetentionDays < 30 ||
+                organizationRetentionDays > 3650
+              }
+            >
+              Save Compliance Settings
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ── Team Members ── */}
       <div data-tour="team-members-card">

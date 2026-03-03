@@ -17,6 +17,8 @@ import { ChecklistItemsService } from '../checklist-items/checklist-items.servic
 import { CreateClinicianDto } from './dto/create-clinician.dto.js';
 import { UpdateClinicianDto } from './dto/update-clinician.dto.js';
 import { SetOverrideDto } from './dto/set-override.dto.js';
+import { AttestAssignmentDto } from './dto/attest-assignment.dto.js';
+import { RevokeAssignmentAttestationDto } from './dto/revoke-assignment-attestation.dto.js';
 import { Roles, CurrentUser, Public } from '../../auth/decorators/index.js';
 import type { AuthenticatedUser } from '../../common/interfaces.js';
 import { ClinicianStatus } from '../../../generated/prisma/client.js';
@@ -116,6 +118,7 @@ export class CliniciansController {
   // ── Authenticated Endpoints ─────────────────────────────────
 
   @Get()
+  @Roles('super_admin', 'admin', 'recruiter', 'compliance')
   findAll(
     @CurrentUser() user: any,
     @Query('status') status?: string,
@@ -150,14 +153,63 @@ export class CliniciansController {
         id,
         authUser.organizationId,
         overrideValue,
-        dto.reason,
+        dto.reasonCode,
+        dto.reasonText || null,
         dto.expiresInHours,
+        dto.secondApproverUserId || null,
         authUser.id,
         authUser.role,
       );
     } catch (err: any) {
       throw new BadRequestException(err.message);
     }
+  }
+
+  @Get(':id/readiness')
+  @Roles('super_admin', 'admin', 'recruiter', 'compliance')
+  async getReadiness(@Param('id') id: string, @CurrentUser() user: any) {
+    const authUser = user as AuthenticatedUser;
+    await this.cliniciansService.findOne(id, authUser.organizationId);
+    return this.readyToStaffService.getReadiness(id, authUser.organizationId);
+  }
+
+  @Post(':id/attest-assignment')
+  @Roles('super_admin', 'admin', 'compliance')
+  async attestAssignment(
+    @Param('id') id: string,
+    @Body() dto: AttestAssignmentDto,
+    @CurrentUser() user: any,
+  ) {
+    const authUser = user as AuthenticatedUser;
+    await this.cliniciansService.findOne(id, authUser.organizationId);
+    return this.readyToStaffService.attestAssignment(
+      id,
+      authUser.organizationId,
+      dto.reasonCode,
+      dto.reasonText || null,
+      dto.expiresInHours || null,
+      authUser.id,
+      authUser.role,
+    );
+  }
+
+  @Post(':id/revoke-attestation')
+  @Roles('super_admin', 'admin', 'compliance')
+  async revokeAttestation(
+    @Param('id') id: string,
+    @Body() dto: RevokeAssignmentAttestationDto,
+    @CurrentUser() user: any,
+  ) {
+    const authUser = user as AuthenticatedUser;
+    await this.cliniciansService.findOne(id, authUser.organizationId);
+    return this.readyToStaffService.revokeAssignmentAttestation(
+      id,
+      authUser.organizationId,
+      dto.reasonCode,
+      dto.reasonText || null,
+      authUser.id,
+      authUser.role,
+    );
   }
 
   @Delete(':id/override')
@@ -175,6 +227,7 @@ export class CliniciansController {
   }
 
   @Get(':id')
+  @Roles('super_admin', 'admin', 'recruiter', 'compliance')
   findOne(@Param('id') id: string, @CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
     return this.cliniciansService.findOne(id, authUser.organizationId);
@@ -191,6 +244,7 @@ export class CliniciansController {
   }
 
   @Get(':id/checklist')
+  @Roles('super_admin', 'admin', 'recruiter', 'compliance')
   getChecklist(@Param('id') id: string, @CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
     return this.checklistItemsService.findByClinician(
@@ -200,6 +254,7 @@ export class CliniciansController {
   }
 
   @Get(':id/progress')
+  @Roles('super_admin', 'admin', 'recruiter', 'compliance')
   getProgress(@Param('id') id: string, @CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
     return this.cliniciansService.getProgress(id, authUser.organizationId);

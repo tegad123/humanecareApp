@@ -1,4 +1,14 @@
-import { IsString, IsOptional, IsDateString, IsBoolean, MaxLength, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsDateString,
+  IsBoolean,
+  MaxLength,
+  IsIn,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 
 const ALLOWED_MIME_TYPES = [
   'application/pdf',
@@ -55,4 +65,10 @@ export class SubmitItemDto {
   @IsOptional()
   @IsString()
   signatureImage?: string; // base64 PNG data URL from canvas
+
+  @IsOptional()
+  @IsInt()
+  @Min(-840)
+  @Max(840)
+  timezoneOffsetMinutes?: number;
 }

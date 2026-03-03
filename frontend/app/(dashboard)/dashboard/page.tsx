@@ -16,11 +16,15 @@ import {
 import { Spinner, Badge, Card, CardHeader, CardContent } from '@/components/ui';
 import { KPICards } from '@/components/dashboard/kpi-cards';
 import { UpcomingExpirations } from '@/components/dashboard/upcoming-expirations';
+import { ComplianceDisclaimer } from '@/components/dashboard/compliance-disclaimer';
+import { ReminderHealthCard } from '@/components/dashboard/reminder-health-card';
 import {
   fetchStats,
   fetchClinicians,
+  fetchReminderHealth,
   type ClinicianStats,
   type ClinicianWithProgress,
+  type ReminderHealth,
 } from '@/lib/api/admin';
 import { fetchOrgDocumentCount } from '@/lib/api/org-documents';
 
@@ -36,6 +40,8 @@ export default function DashboardOverview() {
   const [error, setError] = useState<string | null>(null);
   const [orgDocCount, setOrgDocCount] = useState(0);
   const [guideDismissed, setGuideDismissed] = useState(false);
+  const [reminderHealth, setReminderHealth] = useState<ReminderHealth | null>(null);
+  const [reminderHealthLoading, setReminderHealthLoading] = useState(true);
 
   useEffect(() => {
     // Check if guide was dismissed
@@ -48,18 +54,21 @@ export default function DashboardOverview() {
     async function load() {
       try {
         const token = await getToken();
-        const [statsData, recentData, docCount] = await Promise.all([
+        const [statsData, recentData, docCount, reminderHealthData] = await Promise.all([
           fetchStats(token),
           fetchClinicians(token, { limit: 5 }),
           fetchOrgDocumentCount(token).catch(() => 0),
+          fetchReminderHealth(token).catch(() => null),
         ]);
         setStats(statsData);
         setRecent(recentData.clinicians);
         setOrgDocCount(docCount);
+        setReminderHealth(reminderHealthData);
       } catch (err: any) {
         setError(err.message || 'Failed to load dashboard');
       } finally {
         setLoading(false);
+        setReminderHealthLoading(false);
       }
     }
     load();
@@ -95,6 +104,14 @@ export default function DashboardOverview() {
           Overview of clinician onboarding and compliance status.
         </p>
       </div>
+
+      <ComplianceDisclaimer />
+      {reminderHealth && (
+        <p className="text-xs text-slate-500">
+          All date/timestamp operations are configured for timezone:{' '}
+          <span className="font-medium">{reminderHealth.timezone || 'Not configured'}</span>
+        </p>
+      )}
 
       {/* Setup Guide — show for new orgs */}
       {stats && !guideDismissed && stats.total === 0 && (
@@ -182,6 +199,11 @@ export default function DashboardOverview() {
 
       {stats && <KPICards stats={stats} />}
 
+      <ReminderHealthCard
+        health={reminderHealth}
+        loading={reminderHealthLoading}
+      />
+
       {/* Upcoming Expirations */}
       <div data-tour="upcoming-expirations">
         <UpcomingExpirations limit={10} />
@@ -238,7 +260,20 @@ export default function DashboardOverview() {
                       {c.discipline}
                     </td>
                     <td className="px-5 py-3">
-                      <Badge status={c.status}>{formatStatus(c.status)}</Badge>
+                      <div className="space-y-1">
+                        <Badge status={c.systemStatus || c.status}>
+                          {formatStatus(c.systemStatus || c.status)}
+                        </Badge>
+                        <Badge
+                          variant={
+                            c.assignmentEligible
+                              ? 'success'
+                              : 'warning'
+                          }
+                        >
+                          {c.assignmentEligible ? 'Assignment Eligible' : 'Not Assignment Eligible'}
+                        </Badge>
+                      </div>
                     </td>
                     <td className="px-5 py-3 text-right font-medium text-slate-700">
                       {c.progress.percentage}%

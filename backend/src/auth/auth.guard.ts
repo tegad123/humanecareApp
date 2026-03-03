@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   Injectable,
   UnauthorizedException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -58,6 +59,7 @@ export class ClerkAuthGuard implements CanActivate {
           clerkUserId: user.clerkUserId,
           entityType: 'user',
         };
+        await this.enforceOrganizationAccessMode(request, authenticatedUser.organizationId);
         request.user = authenticatedUser;
         return true;
       }
@@ -96,6 +98,7 @@ export class ClerkAuthGuard implements CanActivate {
             clerkUserId: updated.clerkUserId,
             entityType: 'user',
           };
+          await this.enforceOrganizationAccessMode(request, authenticatedUser.organizationId);
           request.user = authenticatedUser;
           this.logger.log(
             `Resolved admin/clinician conflict for ${clinician.email}: prioritized admin role (${updated.role})`,
@@ -112,6 +115,7 @@ export class ClerkAuthGuard implements CanActivate {
           entityType: 'clinician',
           clinicianId: clinician.id,
         };
+        await this.enforceOrganizationAccessMode(request, authenticatedUser.organizationId);
         request.user = authenticatedUser;
         return true;
       }
@@ -144,6 +148,7 @@ export class ClerkAuthGuard implements CanActivate {
               clerkUserId: updated.clerkUserId,
               entityType: 'user',
             };
+            await this.enforceOrganizationAccessMode(request, authenticatedUser.organizationId);
             request.user = authenticatedUser;
             this.logger.log(
               `Auto-linked invited user ${email} (${updated.role}) on first sign-in`,
@@ -168,5 +173,66 @@ export class ClerkAuthGuard implements CanActivate {
     if (!authHeader) return undefined;
     const [type, token] = authHeader.split(' ');
     return type === 'Bearer' ? token : undefined;
+  }
+
+  private isAllowedMutatingRouteInReadOnly(pathname: string): boolean {
+    return (
+      pathname.includes('/billing/') ||
+      pathname.includes('/exports') ||
+      pathname.includes('/jobs/reminder-health')
+    );
+  }
+
+  private async enforceOrganizationAccessMode(request: any, organizationId: string) {
+    let mode: 'active' | 'read_only' | 'suspended' = 'active';
+    let gracePeriodEndsAt: Date | null = null;
+    try {
+      const rows = await this.prisma.$queryRaw<
+        Array<{
+          access_mode: 'active' | 'read_only' | 'suspended';
+          grace_period_ends_at: Date | null;
+        }>
+      >`
+        SELECT access_mode, grace_period_ends_at
+        FROM organizations
+        WHERE id = ${organizationId}
+        LIMIT 1
+      `;
+      mode = rows[0]?.access_mode || 'active';
+      gracePeriodEndsAt = rows[0]?.grace_period_ends_at || null;
+    } catch {
+      // If migrations aren't applied yet, fail open to maintain auth availability.
+      return;
+    }
+
+    const method = String(request.method || 'GET').toUpperCase();
+    const pathname = String(request.originalUrl || request.url || '').split('?')[0];
+    const isReadMethod = ['GET', 'HEAD', 'OPTIONS'].includes(method);
+
+    if (mode === 'suspended') {
+      if (!pathname.includes('/billing/')) {
+        throw new ForbiddenException(
+          'Organization access is suspended. Contact support or resolve billing to restore access.',
+        );
+      }
+      return;
+    }
+
+    if (mode === 'read_only') {
+      if (gracePeriodEndsAt && gracePeriodEndsAt.getTime() < Date.now()) {
+        if (!pathname.includes('/billing/')) {
+          throw new ForbiddenException(
+            'Read-only grace period has ended. Account is suspended pending billing resolution.',
+          );
+        }
+        return;
+      }
+
+      if (!isReadMethod && !this.isAllowedMutatingRouteInReadOnly(pathname)) {
+        throw new ForbiddenException(
+          'Organization is in read-only mode. Write operations are disabled during billing grace period.',
+        );
+      }
+    }
   }
 }

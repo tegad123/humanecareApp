@@ -28,6 +28,7 @@ export class BillingController {
     return this.billingService.createCheckoutSession(
       authUser.organizationId,
       authUser.email,
+      { id: authUser.id, role: authUser.role },
     );
   }
 
@@ -35,7 +36,10 @@ export class BillingController {
   @Roles('super_admin', 'admin')
   createPortalSession(@CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
-    return this.billingService.createPortalSession(authUser.organizationId);
+    return this.billingService.createPortalSession(authUser.organizationId, {
+      id: authUser.id,
+      role: authUser.role,
+    });
   }
 
   @Get('invoices')
@@ -56,14 +60,20 @@ export class BillingController {
   @Roles('super_admin', 'admin')
   cancelSubscription(@CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
-    return this.billingService.cancelSubscription(authUser.organizationId);
+    return this.billingService.cancelSubscription(authUser.organizationId, {
+      id: authUser.id,
+      role: authUser.role,
+    });
   }
 
   @Post('resume-subscription')
   @Roles('super_admin', 'admin')
   resumeSubscription(@CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
-    return this.billingService.resumeSubscription(authUser.organizationId);
+    return this.billingService.resumeSubscription(authUser.organizationId, {
+      id: authUser.id,
+      role: authUser.role,
+    });
   }
 
   @Post('webhook')

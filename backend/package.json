@@ -7,6 +7,8 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "npx prisma generate && nest build",
+    "db:can-connect": "node scripts/schema-engine-rpc.mjs can-connect",
+    "db:migrate:apply": "node scripts/schema-engine-rpc.mjs apply-migrations",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "npx prisma generate && npx prisma migrate deploy && nest start",
     "start:dev": "nest start --watch",

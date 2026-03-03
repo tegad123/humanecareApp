@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { ReadyToStaffService } from '../modules/clinicians/ready-to-staff.service.js';
 import { AuditLogsService } from '../modules/audit-logs/audit-logs.service.js';
 import { ChecklistItemStatus } from '../../generated/prisma/client.js';
+import { JobRunsService } from './job-runs.service.js';
 
 /**
  * Daily cron job that runs at 2:00 AM to:
@@ -20,6 +21,7 @@ export class ExpirationJobService {
     private prisma: PrismaService,
     private readyToStaff: ReadyToStaffService,
     private auditLogs: AuditLogsService,
+    private jobRuns: JobRunsService,
   ) {}
 
   /**
@@ -28,6 +30,14 @@ export class ExpirationJobService {
   @Cron('0 2 * * *', { name: 'checklist-item-expiration' })
   async handleItemExpiration() {
     this.logger.log('Starting daily expiration check...');
+
+    let runId: string | null = null;
+    const counts = { processedCount: 0, successCount: 0, failureCount: 0 };
+    try {
+      runId = await this.jobRuns.startRun('checklist-item-expiration');
+    } catch (error) {
+      this.jobRuns.logFallback('checklist-item-expiration', error);
+    }
 
     try {
       // Find all approved items where expiresAt has passed
@@ -53,6 +63,9 @@ export class ExpirationJobService {
 
       if (expiredItems.length === 0) {
         this.logger.log('No expired items found.');
+        if (runId) {
+          await this.jobRuns.completeRun(runId, counts, { affectedClinicians: 0 });
+        }
         return;
       }
 
@@ -62,6 +75,7 @@ export class ExpirationJobService {
       const affectedClinicians = new Set<string>();
 
       for (const item of expiredItems) {
+        counts.processedCount++;
         // Flip status to expired
         await this.prisma.clinicianChecklistItem.update({
           where: { id: item.id },
@@ -90,6 +104,7 @@ export class ExpirationJobService {
         affectedClinicians.add(
           `${item.clinician.id}::${item.clinician.organizationId}`,
         );
+        counts.successCount++;
       }
 
       // Recompute status for all affected clinicians
@@ -101,8 +116,21 @@ export class ExpirationJobService {
       this.logger.log(
         `Expiration check complete. ${expiredItems.length} item(s) expired, ${affectedClinicians.size} clinician(s) recomputed.`,
       );
+      if (runId) {
+        await this.jobRuns.completeRun(runId, counts, {
+          affectedClinicians: affectedClinicians.size,
+        });
+      }
     } catch (error: any) {
       this.logger.error(`Expiration job failed: ${error.message}`, error.stack);
+      counts.failureCount++;
+      if (runId) {
+        await this.jobRuns.failRun(
+          runId,
+          error.message || 'Checklist expiration job failed',
+          counts,
+        );
+      }
     }
   }
 
@@ -112,6 +140,14 @@ export class ExpirationJobService {
   @Cron('0 2 * * *', { name: 'override-expiration' })
   async handleOverrideExpiration() {
     this.logger.log('Checking for expired admin overrides...');
+
+    let runId: string | null = null;
+    const counts = { processedCount: 0, successCount: 0, failureCount: 0 };
+    try {
+      runId = await this.jobRuns.startRun('override-expiration');
+    } catch (error) {
+      this.jobRuns.logFallback('override-expiration', error);
+    }
 
     try {
       const expiredOverrides = await this.prisma.clinician.findMany({
@@ -124,6 +160,9 @@ export class ExpirationJobService {
 
       if (expiredOverrides.length === 0) {
         this.logger.log('No expired overrides found.');
+        if (runId) {
+          await this.jobRuns.completeRun(runId, counts);
+        }
         return;
       }
 
@@ -132,6 +171,7 @@ export class ExpirationJobService {
       );
 
       for (const clinician of expiredOverrides) {
+        counts.processedCount++;
         await this.prisma.clinician.update({
           where: { id: clinician.id },
           data: {
@@ -162,12 +202,25 @@ export class ExpirationJobService {
         this.logger.log(
           `Cleared expired override for ${clinician.firstName} ${clinician.lastName}`,
         );
+        counts.successCount++;
+      }
+
+      if (runId) {
+        await this.jobRuns.completeRun(runId, counts);
       }
     } catch (error: any) {
       this.logger.error(
         `Override expiration job failed: ${error.message}`,
         error.stack,
       );
+      counts.failureCount++;
+      if (runId) {
+        await this.jobRuns.failRun(
+          runId,
+          error.message || 'Override expiration job failed',
+          counts,
+        );
+      }
     }
   }
 }

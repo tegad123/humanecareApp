@@ -8,8 +8,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import Stripe from 'stripe';
+import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
 
 type PlanTier = 'starter' | 'growth' | 'pro';
+type BillingActor = { id: string; role: string };
 
 @Injectable()
 export class BillingService {
@@ -17,10 +19,12 @@ export class BillingService {
   private readonly stripe: Stripe | null;
   private readonly frontendUrl: string;
   private readonly processedEvents = new Set<string>();
+  private readonly defaultGracePeriodDays = 45;
 
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
+    private auditLogs: AuditLogsService,
   ) {
     const stripeKey = this.config.get<string>('STRIPE_SECRET_KEY');
     if (stripeKey) {
@@ -79,6 +83,8 @@ export class BillingService {
     const result: {
       organizationId: string;
       planTier: PlanTier;
+      accessMode: 'active' | 'read_only' | 'suspended';
+      gracePeriodEndsAt: string | null;
       stripeSubscriptionId: string | null;
       billingEmail: string | null;
       subscription: {
@@ -99,10 +105,31 @@ export class BillingService {
     } = {
       organizationId,
       planTier: org.planTier,
+      accessMode: 'active',
+      gracePeriodEndsAt: null,
       stripeSubscriptionId: org.stripeSubscriptionId,
       billingEmail: org.billingEmail,
       subscription: null,
     };
+
+    try {
+      const modeRows = await this.prisma.$queryRaw<
+        Array<{ access_mode: 'active' | 'read_only' | 'suspended'; grace_period_ends_at: Date | null }>
+      >`
+        SELECT access_mode, grace_period_ends_at
+        FROM organizations
+        WHERE id = ${organizationId}
+        LIMIT 1
+      `;
+      if (modeRows[0]) {
+        result.accessMode = modeRows[0].access_mode;
+        result.gracePeriodEndsAt = modeRows[0].grace_period_ends_at
+          ? modeRows[0].grace_period_ends_at.toISOString()
+          : null;
+      }
+    } catch {
+      // Backward-compatible default before Phase 3 migration is applied.
+    }
 
     if (org.stripeSubscriptionId) {
       try {
@@ -143,6 +170,7 @@ export class BillingService {
   async createCheckoutSession(
     organizationId: string,
     userEmail: string,
+    actor?: BillingActor,
   ): Promise<{ url: string }> {
     const priceId = this.config.get<string>('STRIPE_PRICE_ID');
     if (!priceId) {
@@ -169,6 +197,21 @@ export class BillingService {
       );
     }
 
+    await this.auditLogs.log({
+      organizationId,
+      actorUserId: actor?.id,
+      actorRole: actor?.role as any,
+      entityType: 'billing',
+      entityId: organizationId,
+      action: 'billing_checkout_session_created',
+      details: {
+        mode: session.mode,
+        sessionId: session.id,
+        customerId,
+        email: userEmail,
+      },
+    });
+
     return { url: session.url };
   }
 
@@ -176,12 +219,25 @@ export class BillingService {
 
   async createPortalSession(
     organizationId: string,
+    actor?: BillingActor,
   ): Promise<{ url: string }> {
     const customerId = await this.getOrCreateCustomer(organizationId);
 
     const session = await this.getStripe().billingPortal.sessions.create({
       customer: customerId,
       return_url: `${this.frontendUrl}/dashboard/billing`,
+    });
+
+    await this.auditLogs.log({
+      organizationId,
+      actorUserId: actor?.id,
+      actorRole: actor?.role as any,
+      entityType: 'billing',
+      entityId: organizationId,
+      action: 'billing_portal_session_created',
+      details: {
+        customerId,
+      },
     });
 
     return { url: session.url };
@@ -241,7 +297,7 @@ export class BillingService {
 
   /* ── Cancel / Resume Subscription ── */
 
-  async cancelSubscription(organizationId: string) {
+  async cancelSubscription(organizationId: string, actor?: BillingActor) {
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
     });
@@ -260,6 +316,20 @@ export class BillingService {
         `Organization ${organizationId} scheduled subscription cancellation at period end`,
       );
 
+      await this.auditLogs.log({
+        organizationId,
+        actorUserId: actor?.id,
+        actorRole: actor?.role as any,
+        entityType: 'billing',
+        entityId: organizationId,
+        action: 'billing_subscription_cancel_scheduled',
+        details: {
+          subscriptionId: org.stripeSubscriptionId,
+          cancelAt: sub.cancel_at,
+          cancelAtPeriodEnd: sub.cancel_at_period_end,
+        },
+      });
+
       return {
         cancelAt: sub.cancel_at,
         cancelAtPeriodEnd: sub.cancel_at_period_end,
@@ -273,7 +343,7 @@ export class BillingService {
     }
   }
 
-  async resumeSubscription(organizationId: string) {
+  async resumeSubscription(organizationId: string, actor?: BillingActor) {
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
     });
@@ -291,6 +361,20 @@ export class BillingService {
       this.logger.log(
         `Organization ${organizationId} resumed subscription (cancellation undone)`,
       );
+
+      await this.auditLogs.log({
+        organizationId,
+        actorUserId: actor?.id,
+        actorRole: actor?.role as any,
+        entityType: 'billing',
+        entityId: organizationId,
+        action: 'billing_subscription_resume',
+        details: {
+          subscriptionId: org.stripeSubscriptionId,
+          cancelAt: sub.cancel_at,
+          cancelAtPeriodEnd: sub.cancel_at_period_end,
+        },
+      });
 
       return {
         cancelAt: sub.cancel_at,
@@ -368,6 +452,14 @@ export class BillingService {
                 planTier: 'pro',
               },
             });
+            await this.prisma.$executeRaw`
+              UPDATE organizations
+              SET
+                access_mode = 'active'::"OrgAccessMode",
+                grace_period_ends_at = NULL,
+                updated_at = NOW()
+              WHERE id = ${orgId}
+            `;
           } catch (err) {
             this.logger.error(`Failed to process checkout for org ${orgId}`, err);
             break;
@@ -387,6 +479,21 @@ export class BillingService {
           this.logger.log(
             `Organization ${orgId} subscribed (sub: ${subscriptionId})`,
           );
+          await this.auditLogs.log({
+            organizationId: orgId,
+            entityType: 'billing',
+            entityId: orgId,
+            action: 'billing_subscription_activated',
+            details: {
+              eventId: event.id,
+              subscriptionId,
+              customerId:
+                typeof session.customer === 'string'
+                  ? session.customer
+                  : (session.customer?.id ?? null),
+              source: 'stripe_webhook',
+            },
+          });
         }
         break;
       }
@@ -408,9 +515,35 @@ export class BillingService {
                 stripeSubscriptionId: null,
               },
             });
-            this.logger.log(
-              `Organization ${orgId} subscription canceled, downgraded to starter`,
+            const graceEndsAt = new Date(
+              Date.now() + this.defaultGracePeriodDays * 24 * 60 * 60 * 1000,
             );
+            await this.prisma.$executeRaw`
+              UPDATE organizations
+              SET
+                access_mode = 'read_only'::"OrgAccessMode",
+                grace_period_ends_at = ${graceEndsAt},
+                updated_at = NOW()
+              WHERE id = ${orgId}
+            `;
+            this.logger.log(
+              `Organization ${orgId} subscription canceled, downgraded to starter, read-only grace until ${graceEndsAt.toISOString()}`,
+            );
+            await this.auditLogs.log({
+              organizationId: orgId,
+              entityType: 'billing',
+              entityId: orgId,
+              action: 'billing_subscription_canceled',
+              details: {
+                eventId: event.id,
+                subscriptionId: sub.id,
+                source: 'stripe_webhook',
+                downgradedPlanTier: 'starter',
+                accessMode: 'read_only',
+                gracePeriodDays: this.defaultGracePeriodDays,
+                gracePeriodEndsAt: graceEndsAt.toISOString(),
+              },
+            });
           } catch (err) {
             this.logger.error(`Failed to downgrade org ${orgId} after subscription deletion`, err);
           }
@@ -423,6 +556,18 @@ export class BillingService {
         this.logger.log(
           `Invoice ${invoice.id} paid for customer ${invoice.customer}`,
         );
+        const customerId =
+          typeof invoice.customer === 'string' ? invoice.customer : null;
+        if (customerId) {
+          await this.prisma.$executeRaw`
+            UPDATE organizations
+            SET
+              access_mode = 'active'::"OrgAccessMode",
+              grace_period_ends_at = NULL,
+              updated_at = NOW()
+            WHERE stripe_customer_id = ${customerId}
+          `;
+        }
         break;
       }
 

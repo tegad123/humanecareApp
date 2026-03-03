@@ -37,6 +37,72 @@ export class CliniciansService {
     this.frontendUrl = (this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000').split(',')[0].trim();
   }
 
+  private isAssignmentEligible(
+    systemStatus: string,
+    attestation: { state: 'attested' | 'revoked' | 'expired' } | null,
+  ): boolean {
+    return systemStatus === 'ready' && attestation?.state === 'attested';
+  }
+
+  private async getLatestAssignmentAttestation(
+    clinicianId: string,
+    organizationId: string,
+  ) {
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        state: 'attested' | 'revoked' | 'expired';
+        reason_code: string;
+        reason_text: string | null;
+        attested_by_user_id: string | null;
+        attested_by_role: string | null;
+        attested_at: Date | null;
+        expires_at: Date | null;
+        revoked_by_user_id: string | null;
+        revoked_at: Date | null;
+      }>
+    >`
+      SELECT
+        state,
+        reason_code,
+        reason_text,
+        attested_by_user_id,
+        attested_by_role,
+        attested_at,
+        expires_at,
+        revoked_by_user_id,
+        revoked_at
+      FROM assignment_attestations
+      WHERE clinician_id = ${clinicianId}
+        AND organization_id = ${organizationId}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+
+    const latest = rows[0];
+    if (!latest) return null;
+
+    let state = latest.state;
+    if (
+      state === 'attested' &&
+      latest.expires_at &&
+      latest.expires_at <= new Date()
+    ) {
+      state = 'expired';
+    }
+
+    return {
+      state,
+      reasonCode: latest.reason_code,
+      reasonText: latest.reason_text,
+      attestedByUserId: latest.attested_by_user_id,
+      attestedByRole: latest.attested_by_role,
+      attestedAt: latest.attested_at?.toISOString() || null,
+      expiresAt: latest.expires_at?.toISOString() || null,
+      revokedByUserId: latest.revoked_by_user_id,
+      revokedAt: latest.revoked_at?.toISOString() || null,
+    };
+  }
+
   /**
    * Create a clinician and instantiate all checklist items from the template.
    * Uses a $transaction to ensure atomicity.
@@ -172,7 +238,21 @@ export class CliniciansService {
     const cliniciansWithProgress = await Promise.all(
       clinicians.map(async (c) => {
         const progress = await this.getProgress(c.id, organizationId);
-        return { ...c, progress };
+        const assignmentAttestation = await this.getLatestAssignmentAttestation(
+          c.id,
+          organizationId,
+        );
+        const systemStatus = c.status;
+        return {
+          ...c,
+          progress,
+          systemStatus,
+          assignmentAttestation,
+          assignmentEligible: this.isAssignmentEligible(
+            systemStatus,
+            assignmentAttestation,
+          ),
+        };
       }),
     );
 
@@ -199,7 +279,20 @@ export class CliniciansService {
       },
     });
     if (!clinician) throw new NotFoundException('Clinician not found');
-    return clinician;
+    const assignmentAttestation = await this.getLatestAssignmentAttestation(
+      clinician.id,
+      organizationId,
+    );
+    const systemStatus = clinician.status;
+    return {
+      ...clinician,
+      systemStatus,
+      assignmentAttestation,
+      assignmentEligible: this.isAssignmentEligible(
+        systemStatus,
+        assignmentAttestation,
+      ),
+    };
   }
 
   async update(id: string, dto: UpdateClinicianDto, user: AuthenticatedUser) {

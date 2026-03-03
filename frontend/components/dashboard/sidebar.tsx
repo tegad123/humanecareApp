@@ -10,6 +10,7 @@ import {
   FolderOpen,
   Mail,
   CreditCard,
+  ShieldCheck,
   Settings,
   Menu,
   X,
@@ -33,7 +34,7 @@ const navItems = [
     href: '/dashboard/clinicians',
     label: 'Clinicians',
     icon: Users,
-    roles: ['super_admin', 'admin', 'recruiter', 'compliance', 'scheduler', 'payroll'],
+    roles: ['super_admin', 'admin', 'recruiter', 'compliance'],
   },
   {
     href: '/dashboard/templates',
@@ -58,6 +59,12 @@ const navItems = [
     label: 'Audit Logs',
     icon: FileText,
     roles: ['super_admin', 'admin', 'compliance'],
+  },
+  {
+    href: '/dashboard/compliance',
+    label: 'Compliance',
+    icon: ShieldCheck,
+    roles: ['super_admin', 'admin', 'recruiter', 'compliance', 'scheduler', 'payroll'],
   },
   {
     href: '/dashboard/billing',

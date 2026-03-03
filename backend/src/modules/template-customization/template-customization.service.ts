@@ -7,9 +7,14 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
 import { CreateItemDefinitionDto } from './dto/create-item-definition.dto.js';
+import { PublishTemplateDto } from './dto/publish-template.dto.js';
 import { UpdateItemDefinitionDto } from './dto/update-item-definition.dto.js';
 import type { AuthenticatedUser } from '../../common/interfaces.js';
 import { ChecklistItemType } from '../../../generated/prisma/client.js';
+import { randomUUID } from 'crypto';
+
+const PUBLISH_ATTESTATION_TEXT =
+  'I attest this template meets applicable federal, state, accreditation, and payer requirements for this role in my jurisdiction.';
 
 @Injectable()
 export class TemplateCustomizationService {
@@ -125,6 +130,148 @@ export class TemplateCustomizationService {
     });
 
     return cloned;
+  }
+
+  async publishTemplate(
+    templateId: string,
+    dto: PublishTemplateDto,
+    user: AuthenticatedUser,
+  ) {
+    const template = await this.prisma.checklistTemplate.findFirst({
+      where: {
+        id: templateId,
+        organizationId: user.organizationId,
+        isCustomized: true,
+      },
+      include: {
+        itemDefinitions: {
+          where: { enabled: true },
+          select: {
+            id: true,
+            label: true,
+            required: true,
+            blocking: true,
+            hasExpiration: true,
+            highRisk: true,
+          },
+        },
+      },
+    });
+
+    if (!template) {
+      throw new NotFoundException('Template not found');
+    }
+
+    const requiredChecks = {
+      license: dto.reviewedLicense,
+      backgroundCheck: dto.reviewedBackgroundCheck,
+      exclusionCheck: dto.reviewedExclusionCheck,
+      liabilityInsurance: dto.reviewedLiabilityInsurance,
+      orientation: dto.reviewedOrientation,
+      stateSpecificItems: dto.reviewedStateSpecificItems,
+    };
+
+    const missingChecks = Object.entries(requiredChecks)
+      .filter(([, checked]) => !checked)
+      .map(([name]) => name);
+
+    if (missingChecks.length > 0) {
+      throw new BadRequestException(
+        `Publish checklist incomplete. Missing: ${missingChecks.join(', ')}`,
+      );
+    }
+
+    if (!dto.attestationAccepted) {
+      throw new BadRequestException(
+        'Template publish requires explicit attestation acceptance.',
+      );
+    }
+
+    if (template.itemDefinitions.length === 0) {
+      throw new BadRequestException(
+        'Template must include at least one enabled item before publishing.',
+      );
+    }
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{ published_revision: number }>
+    >`
+      SELECT published_revision
+      FROM checklist_templates
+      WHERE id = ${templateId}
+        AND organization_id = ${user.organizationId}
+      LIMIT 1
+    `;
+
+    const nextRevision = (rows[0]?.published_revision ?? 0) + 1;
+    const publishedAt = new Date();
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE checklist_templates
+        SET
+          published_revision = ${nextRevision},
+          last_published_at = ${publishedAt},
+          last_published_by_id = ${user.id},
+          updated_at = ${publishedAt}
+        WHERE id = ${templateId}
+          AND organization_id = ${user.organizationId}
+      `;
+
+      await tx.$executeRaw`
+        INSERT INTO template_publish_attestations (
+          id,
+          organization_id,
+          template_id,
+          published_by_user_id,
+          published_by_role,
+          published_revision,
+          jurisdiction_state,
+          discipline,
+          required_categories_json,
+          attestation_accepted,
+          attestation_text,
+          published_at
+        ) VALUES (
+          ${randomUUID()},
+          ${user.organizationId},
+          ${templateId},
+          ${user.id},
+          ${user.role}::"Role",
+          ${nextRevision},
+          ${dto.jurisdictionState || null},
+          ${template.discipline ? `${template.discipline}` : null}::"Discipline",
+          ${JSON.stringify(requiredChecks)}::jsonb,
+          ${true},
+          ${PUBLISH_ATTESTATION_TEXT},
+          ${publishedAt}
+        )
+      `;
+    });
+
+    await this.auditLogs.log({
+      organizationId: user.organizationId,
+      actorUserId: user.id,
+      actorRole: user.role,
+      entityType: 'checklist_template',
+      entityId: templateId,
+      action: 'template_published',
+      details: {
+        publishedRevision: nextRevision,
+        publishedAt: publishedAt.toISOString(),
+        jurisdictionState: dto.jurisdictionState || null,
+        requiredChecks,
+      },
+    });
+
+    return {
+      templateId,
+      publishedRevision: nextRevision,
+      publishedAt: publishedAt.toISOString(),
+      jurisdictionState: dto.jurisdictionState || null,
+      requiredChecks,
+      attestationAccepted: true,
+    };
   }
 
   /**

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
 import { ClinicianStatus } from '../../../generated/prisma/client.js';
+import { randomUUID } from 'crypto';
 
 /**
  * Computes and updates the Ready-to-Staff status for a clinician.
@@ -21,6 +22,45 @@ export class ReadyToStaffService {
     private prisma: PrismaService,
     private auditLogs: AuditLogsService,
   ) {}
+
+  private isAttestationActive(
+    attestation:
+      | {
+          state: 'attested' | 'revoked' | 'expired';
+          expiresAt: string | null;
+        }
+      | null,
+  ): boolean {
+    if (!attestation) return false;
+    return attestation.state === 'attested';
+  }
+
+  private async getDualApprovalRequired(organizationId: string): Promise<boolean> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ require_dual_approval_for_high_risk_override: boolean }>
+    >`SELECT require_dual_approval_for_high_risk_override FROM organizations WHERE id = ${organizationId} LIMIT 1`;
+    return rows[0]?.require_dual_approval_for_high_risk_override === true;
+  }
+
+  private async hasUnresolvedHighRiskBlockingItem(
+    clinicianId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    const count = await this.prisma.clinicianChecklistItem.count({
+      where: {
+        clinicianId,
+        organizationId,
+        itemDefinition: {
+          highRisk: true,
+          blocking: true,
+        },
+        status: {
+          not: 'approved',
+        },
+      },
+    });
+    return count > 0;
+  }
 
   /**
    * Recompute the clinician's status based on checklist item states.
@@ -130,6 +170,8 @@ export class ReadyToStaffService {
           computedStatus,
           overrideActive: clinician.adminOverrideActive,
         },
+        oldValue: { status: clinician.status },
+        newValue: { status: finalStatus },
       });
     }
 
@@ -145,11 +187,28 @@ export class ReadyToStaffService {
     clinicianId: string,
     organizationId: string,
     overrideValue: ClinicianStatus,
-    reason: string,
+    reasonCode: string,
+    reasonText: string | null,
     expiresInHours: number,
+    secondApproverUserId: string | null,
     actorUserId: string,
     actorRole: string,
   ) {
+    const currentClinician = await this.prisma.clinician.findFirst({
+      where: { id: clinicianId, organizationId },
+      select: {
+        status: true,
+        adminOverrideActive: true,
+        adminOverrideValue: true,
+        adminOverrideReason: true,
+        adminOverrideExpiresAt: true,
+      },
+    });
+
+    if (!currentClinician) {
+      throw new Error('Clinician not found');
+    }
+
     // Check for expired state license
     const hasExpiredLicense = await this.hasExpiredStateLicense(
       clinicianId,
@@ -166,6 +225,38 @@ export class ReadyToStaffService {
     const maxHours = 72;
     const hours = Math.min(expiresInHours, maxHours);
     const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+    const reason = (reasonText || '').trim() || reasonCode.replace(/_/g, ' ');
+
+    const dualApprovalRequired = await this.getDualApprovalRequired(organizationId);
+    const hasUnresolvedHighRiskBlocking = await this.hasUnresolvedHighRiskBlockingItem(
+      clinicianId,
+      organizationId,
+    );
+    const requireSecondApprover = dualApprovalRequired && hasUnresolvedHighRiskBlocking;
+
+    if (requireSecondApprover) {
+      if (!secondApproverUserId) {
+        throw new Error(
+          'A second approver is required for high-risk override scenarios in this organization.',
+        );
+      }
+      if (secondApproverUserId === actorUserId) {
+        throw new Error('Second approver must be a different user.');
+      }
+      const secondApprover = await this.prisma.user.findFirst({
+        where: {
+          id: secondApproverUserId,
+          organizationId,
+          role: { in: ['super_admin', 'admin', 'compliance'] as any },
+        },
+        select: { id: true },
+      });
+      if (!secondApprover) {
+        throw new Error(
+          'Second approver must be an admin/compliance user in the same organization.',
+        );
+      }
+    }
 
     await this.prisma.clinician.update({
       where: { id: clinicianId },
@@ -178,6 +269,15 @@ export class ReadyToStaffService {
       },
     });
 
+    await this.prisma.$executeRaw`
+      UPDATE clinicians
+      SET
+        admin_override_reason_code = ${reasonCode}::"OverrideReasonCode",
+        admin_override_second_approver_id = ${secondApproverUserId},
+        admin_override_second_approved_at = ${requireSecondApprover ? new Date() : null}
+      WHERE id = ${clinicianId} AND organization_id = ${organizationId}
+    `;
+
     await this.auditLogs.log({
       organizationId,
       actorUserId,
@@ -188,15 +288,35 @@ export class ReadyToStaffService {
       action: 'override_set',
       details: {
         overrideValue,
+        reasonCode,
         reason,
+        reasonText,
         expiresAt: expiresAt.toISOString(),
         expiresInHours: hours,
+        secondApproverUserId,
+        dualApprovalRequired: requireSecondApprover,
+      },
+      reason,
+      oldValue: {
+        status: currentClinician.status,
+        adminOverrideActive: currentClinician.adminOverrideActive,
+        adminOverrideValue: currentClinician.adminOverrideValue,
+        adminOverrideReason: currentClinician.adminOverrideReason,
+        adminOverrideExpiresAt: currentClinician.adminOverrideExpiresAt?.toISOString() || null,
+      },
+      newValue: {
+        status: overrideValue,
+        adminOverrideActive: true,
+        adminOverrideValue: overrideValue,
+        adminOverrideReason: reason,
+        adminOverrideExpiresAt: expiresAt.toISOString(),
       },
     });
 
     return {
       overrideActive: true,
       overrideValue,
+      reasonCode,
       reason,
       expiresAt,
     };
@@ -233,6 +353,17 @@ export class ReadyToStaffService {
     actorUserId?: string,
     actorRole?: string,
   ) {
+    const currentClinician = await this.prisma.clinician.findFirst({
+      where: { id: clinicianId, organizationId },
+      select: {
+        status: true,
+        adminOverrideActive: true,
+        adminOverrideValue: true,
+        adminOverrideReason: true,
+        adminOverrideExpiresAt: true,
+      },
+    });
+
     await this.prisma.clinician.update({
       where: { id: clinicianId },
       data: {
@@ -243,6 +374,15 @@ export class ReadyToStaffService {
       },
     });
 
+    await this.prisma.$executeRaw`
+      UPDATE clinicians
+      SET
+        admin_override_reason_code = NULL,
+        admin_override_second_approver_id = NULL,
+        admin_override_second_approved_at = NULL
+      WHERE id = ${clinicianId} AND organization_id = ${organizationId}
+    `;
+
     await this.auditLogs.log({
       organizationId,
       actorUserId,
@@ -251,6 +391,21 @@ export class ReadyToStaffService {
       entityType: 'clinician',
       entityId: clinicianId,
       action,
+      reason: action,
+      oldValue: {
+        status: currentClinician?.status || null,
+        adminOverrideActive: currentClinician?.adminOverrideActive || false,
+        adminOverrideValue: currentClinician?.adminOverrideValue || null,
+        adminOverrideReason: currentClinician?.adminOverrideReason || null,
+        adminOverrideExpiresAt:
+          currentClinician?.adminOverrideExpiresAt?.toISOString() || null,
+      },
+      newValue: {
+        adminOverrideActive: false,
+        adminOverrideValue: null,
+        adminOverrideReason: null,
+        adminOverrideExpiresAt: null,
+      },
     });
   }
 
@@ -275,5 +430,229 @@ export class ReadyToStaffService {
     });
 
     return expiredLicenseItems.length > 0;
+  }
+
+  async getReadiness(clinicianId: string, organizationId: string) {
+    const systemStatus = await this.computeStatus(clinicianId, organizationId);
+    const attestation = await this.getLatestAssignmentAttestation(
+      clinicianId,
+      organizationId,
+    );
+    const assignmentEligible =
+      systemStatus === 'ready' && this.isAttestationActive(attestation);
+    return {
+      clinicianId,
+      systemStatus,
+      assignmentAttestation: attestation,
+      assignmentEligible,
+    };
+  }
+
+  async attestAssignment(
+    clinicianId: string,
+    organizationId: string,
+    reasonCode: string,
+    reasonText: string | null,
+    expiresInHours: number | null,
+    actorUserId: string,
+    actorRole: string,
+  ) {
+    const systemStatus = await this.computeStatus(clinicianId, organizationId);
+    if (systemStatus !== 'ready') {
+      throw new Error(
+        'Cannot attest assignment unless clinician is System Ready.',
+      );
+    }
+
+    const attestedAt = new Date();
+    const expiresAt =
+      expiresInHours && expiresInHours > 0
+        ? new Date(Date.now() + expiresInHours * 60 * 60 * 1000)
+        : null;
+
+    await this.prisma.$executeRaw`
+      INSERT INTO assignment_attestations (
+        id,
+        organization_id,
+        clinician_id,
+        state,
+        reason_code,
+        reason_text,
+        attested_by_user_id,
+        attested_by_role,
+        attested_at,
+        expires_at,
+        created_at
+      ) VALUES (
+        ${randomUUID()},
+        ${organizationId},
+        ${clinicianId},
+        'attested'::"AssignmentAttestationState",
+        ${reasonCode},
+        ${reasonText},
+        ${actorUserId},
+        ${actorRole}::"Role",
+        ${attestedAt},
+        ${expiresAt},
+        ${attestedAt}
+      )
+    `;
+
+    await this.auditLogs.log({
+      organizationId,
+      actorUserId,
+      actorRole: actorRole as any,
+      clinicianId,
+      entityType: 'clinician',
+      entityId: clinicianId,
+      action: 'assignment_attested',
+      details: {
+        reasonCode,
+        reasonText,
+        expiresAt: expiresAt?.toISOString() || null,
+      },
+      reason: reasonText || reasonCode,
+      newValue: {
+        state: 'attested',
+        reasonCode,
+        reasonText,
+        attestedByUserId: actorUserId,
+        attestedByRole: actorRole,
+        expiresAt: expiresAt?.toISOString() || null,
+      },
+    });
+
+    return this.getReadiness(clinicianId, organizationId);
+  }
+
+  async revokeAssignmentAttestation(
+    clinicianId: string,
+    organizationId: string,
+    reasonCode: string,
+    reasonText: string | null,
+    actorUserId: string,
+    actorRole: string,
+  ) {
+    const revokedAt = new Date();
+
+    await this.prisma.$executeRaw`
+      INSERT INTO assignment_attestations (
+        id,
+        organization_id,
+        clinician_id,
+        state,
+        reason_code,
+        reason_text,
+        revoked_by_user_id,
+        revoked_at,
+        created_at
+      ) VALUES (
+        ${randomUUID()},
+        ${organizationId},
+        ${clinicianId},
+        'revoked'::"AssignmentAttestationState",
+        ${reasonCode},
+        ${reasonText},
+        ${actorUserId},
+        ${revokedAt},
+        ${revokedAt}
+      )
+    `;
+
+    await this.auditLogs.log({
+      organizationId,
+      actorUserId,
+      actorRole: actorRole as any,
+      clinicianId,
+      entityType: 'clinician',
+      entityId: clinicianId,
+      action: 'assignment_attestation_revoked',
+      details: {
+        reasonCode,
+        reasonText,
+      },
+      reason: reasonText || reasonCode,
+      newValue: {
+        state: 'revoked',
+        reasonCode,
+        reasonText,
+        revokedByUserId: actorUserId,
+        revokedAt: revokedAt.toISOString(),
+      },
+    });
+
+    return this.getReadiness(clinicianId, organizationId);
+  }
+
+  async getLatestAssignmentAttestation(
+    clinicianId: string,
+    organizationId: string,
+  ): Promise<
+    | {
+        state: 'attested' | 'revoked' | 'expired';
+        reasonCode: string;
+        reasonText: string | null;
+        attestedByUserId: string | null;
+        attestedByRole: string | null;
+        attestedAt: string | null;
+        expiresAt: string | null;
+        revokedByUserId: string | null;
+        revokedAt: string | null;
+      }
+    | null
+  > {
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        state: 'attested' | 'revoked' | 'expired';
+        reason_code: string;
+        reason_text: string | null;
+        attested_by_user_id: string | null;
+        attested_by_role: string | null;
+        attested_at: Date | null;
+        expires_at: Date | null;
+        revoked_by_user_id: string | null;
+        revoked_at: Date | null;
+      }>
+    >`
+      SELECT
+        state,
+        reason_code,
+        reason_text,
+        attested_by_user_id,
+        attested_by_role,
+        attested_at,
+        expires_at,
+        revoked_by_user_id,
+        revoked_at
+      FROM assignment_attestations
+      WHERE clinician_id = ${clinicianId}
+        AND organization_id = ${organizationId}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+
+    const latest = rows[0];
+    if (!latest) return null;
+
+    let state = latest.state;
+    if (
+      latest.state === 'attested' &&
+      latest.expires_at &&
+      latest.expires_at <= new Date()
+    ) {
+      state = 'expired';
+    }
+
+    return {
+      state,
+      reasonCode: latest.reason_code,
+      reasonText: latest.reason_text,
+      attestedByUserId: latest.attested_by_user_id,
+      attestedByRole: latest.attested_by_role,
+      attestedAt: latest.attested_at?.toISOString() || null,
+      expiresAt: latest.expires_at?.toISOString() || null,
+      revokedByUserId: latest.revoked_by_user_id,
+      revokedAt: latest.revoked_at?.toISOString() || null,
+    };
   }
 }

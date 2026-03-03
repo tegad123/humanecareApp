@@ -65,13 +65,62 @@ enum PlanTier {
   pro
 }
 
+enum AssignmentAttestationState {
+  attested
+  revoked
+  expired
+}
+
+enum OverrideReasonCode {
+  emergency_staffing
+  temporary_transfer
+  documentation_pending
+  admin_exception
+  other
+}
+
+enum JobRunStatus {
+  running
+  success
+  failed
+}
+
+enum OrgAccessMode {
+  active
+  read_only
+  suspended
+}
+
+enum ExportJobStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+enum CorrectiveActionStatus {
+  open
+  closed
+}
+
+enum PolicyDocumentType {
+  terms
+  privacy
+  baa
+}
+
 // ─── Organizations ──────────────────────────────────────
 
 model Organization {
   id                   String   @id @default(uuid())
   name                 String
+  timezone             String?  @map("timezone")
+  accessMode           OrgAccessMode @default(active) @map("access_mode")
+  gracePeriodEndsAt    DateTime? @map("grace_period_ends_at")
+  retentionDays        Int @default(2555) @map("retention_days")
   planTier             PlanTier @default(starter) @map("plan_tier")
   planFlags            Json     @default("{}") @map("plan_flags")
+  requireDualApprovalForHighRiskOverride Boolean @default(false) @map("require_dual_approval_for_high_risk_override")
   stripeCustomerId     String?  @unique @map("stripe_customer_id")
   stripeSubscriptionId String?  @unique @map("stripe_subscription_id")
   billingEmail         String?  @map("billing_email")
@@ -83,9 +132,18 @@ model Organization {
   checklistTemplates      ChecklistTemplate[]
   clinicianChecklistItems ClinicianChecklistItem[]
   auditLogs               AuditLog[]
+  auditEvents             AuditEvent[]
   internalNotes           InternalNote[]
   templateDocuments       TemplateDocument[]
   emailSettings           OrgEmailSettings?
+  assignmentAttestations  AssignmentAttestation[]
+  templatePublishAttestations TemplatePublishAttestation[]
+  signatureCertificates   SignatureCertificate[]
+  jobRuns                 JobRun[]
+  exportJobs              OrganizationExportJob[]
+  legalHolds              LegalHold[]
+  correctiveActions       CorrectiveAction[]
+  policyAcceptances       PolicyAcceptance[]
 
   @@map("organizations")
 }
@@ -107,6 +165,16 @@ model User {
   auditLogs          AuditLog[]
   internalNotes      InternalNote[]
   reviewedItems      ClinicianChecklistItem[] @relation("ReviewedBy")
+  assignmentAttestations AssignmentAttestation[] @relation("AssignmentAttestedBy")
+  assignmentRevocations AssignmentAttestation[] @relation("AssignmentRevokedBy")
+  templatePublishAttestations TemplatePublishAttestation[] @relation("TemplatePublishedBy")
+  auditEvents       AuditEvent[]
+  requestedExportJobs OrganizationExportJob[]
+  legalHoldsCreated LegalHold[] @relation("LegalHoldCreatedBy")
+  legalHoldsReleased LegalHold[] @relation("LegalHoldReleasedBy")
+  correctiveActionsOwned CorrectiveAction[] @relation("CorrectiveActionOwner")
+  correctiveActionsCreated CorrectiveAction[] @relation("CorrectiveActionCreatedBy")
+  policyAcceptances PolicyAcceptance[]
 
   @@index([organizationId])
   @@index([clerkUserId])
@@ -129,7 +197,10 @@ model Clinician {
   adminOverrideActive    Boolean         @default(false) @map("admin_override_active")
   adminOverrideValue     ClinicianStatus? @map("admin_override_value")
   adminOverrideReason    String?         @map("admin_override_reason")
+  adminOverrideReasonCode OverrideReasonCode? @map("admin_override_reason_code")
   adminOverrideExpiresAt DateTime?       @map("admin_override_expires_at")
+  adminOverrideSecondApproverId String?  @map("admin_override_second_approver_id")
+  adminOverrideSecondApprovedAt DateTime? @map("admin_override_second_approved_at")
   npi                    String?
   coverageArea           String?         @map("coverage_area")
   rateInternal           Decimal?        @map("rate_internal") @db.Decimal(10, 2)
@@ -145,7 +216,10 @@ model Clinician {
   assignedRecruiter User?                    @relation("AssignedRecruiter", fields: [assignedRecruiterId], references: [id])
   checklistItems    ClinicianChecklistItem[]
   auditLogs         AuditLog[]
+  auditEvents       AuditEvent[]
   internalNotes     InternalNote[]
+  assignmentAttestations AssignmentAttestation[]
+  signatureCertificates SignatureCertificate[]
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -165,6 +239,9 @@ model ChecklistTemplate {
   description      String?
   sourceTemplateId String?  @map("source_template_id")
   isCustomized     Boolean  @default(false) @map("is_customized")
+  publishedRevision Int     @default(0) @map("published_revision")
+  lastPublishedAt   DateTime? @map("last_published_at")
+  lastPublishedById String? @map("last_published_by_id")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -174,6 +251,7 @@ model ChecklistTemplate {
   itemDefinitions   ChecklistItemDefinition[]
   clinicians        Clinician[]
   templateDocuments TemplateDocument[]
+  publishAttestations TemplatePublishAttestation[]
 
   @@index([organizationId])
   @@map("checklist_templates")
@@ -234,9 +312,12 @@ model ClinicianChecklistItem {
   signerName              String?             @map("signer_name")
   signatureTimestamp      DateTime?           @map("signature_timestamp")
   signerIp                String?             @map("signer_ip")
+  signerUserAgent         String?             @map("signer_user_agent")
+  signerTimezoneOffsetMinutes Int?            @map("signer_timezone_offset_minutes")
   signatureHash           String?             @map("signature_hash")
   signedDocPath           String?             @map("signed_doc_path")
   signatureImagePath      String?             @map("signature_image_path")
+  signatureCertificatePath String?            @map("signature_certificate_path")
   agreementText           String?             @map("agreement_text") @db.Text
   createdAt               DateTime            @default(now()) @map("created_at")
   updatedAt               DateTime            @updatedAt @map("updated_at")
@@ -245,6 +326,7 @@ model ClinicianChecklistItem {
   clinician      Clinician               @relation(fields: [clinicianId], references: [id], onDelete: Cascade)
   itemDefinition ChecklistItemDefinition @relation(fields: [itemDefinitionId], references: [id])
   reviewedBy     User?                   @relation("ReviewedBy", fields: [reviewedById], references: [id])
+  signatureCertificates SignatureCertificate[]
 
   @@index([organizationId])
   @@index([clinicianId])
@@ -317,6 +399,210 @@ model AuditLog {
   @@index([clinicianId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model AuditEvent {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  actorUserId    String?  @map("actor_user_id")
+  actorRole      Role?    @map("actor_role")
+  clinicianId    String?  @map("clinician_id")
+  entityType     String   @map("entity_type")
+  entityId       String   @map("entity_id")
+  action         String
+  requestId      String   @map("request_id")
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
+  reason         String?  @map("reason")
+  oldValueJson   Json?    @map("old_value_json")
+  newValueJson   Json?    @map("new_value_json")
+  detailsJson    Json?    @map("details_json")
+  payloadCanonical String @map("payload_canonical") @db.Text
+  prevHash       String?  @map("prev_hash")
+  eventHash      String   @map("event_hash")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorUser    User?        @relation(fields: [actorUserId], references: [id])
+  clinician    Clinician?   @relation(fields: [clinicianId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@index([requestId])
+  @@unique([eventHash])
+  @@map("audit_events")
+}
+
+model SignatureCertificate {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  clinicianId    String   @map("clinician_id")
+  checklistItemId String  @map("checklist_item_id")
+  signerName     String   @map("signer_name")
+  signerAccountId String? @map("signer_account_id")
+  signerIp       String?  @map("signer_ip")
+  signerUserAgent String? @map("signer_user_agent")
+  signerTimezoneOffsetMinutes Int? @map("signer_timezone_offset_minutes")
+  signedAt       DateTime @map("signed_at")
+  linkedDocumentId String? @map("linked_document_id")
+  linkedDocumentPath String? @map("linked_document_path")
+  linkedDocumentHash String @map("linked_document_hash")
+  linkedDocumentVersion Int? @map("linked_document_version")
+  agreementHash  String   @map("agreement_hash")
+  certificateStoragePath String @map("certificate_storage_path")
+  certificateJson Json?   @map("certificate_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clinician    Clinician    @relation(fields: [clinicianId], references: [id], onDelete: Cascade)
+  checklistItem ClinicianChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, clinicianId, createdAt])
+  @@index([checklistItemId])
+  @@map("signature_certificates")
+}
+
+model JobRun {
+  id             String       @id @default(uuid())
+  organizationId String?      @map("organization_id")
+  jobName        String       @map("job_name")
+  status         JobRunStatus
+  startedAt      DateTime     @map("started_at")
+  finishedAt     DateTime?    @map("finished_at")
+  processedCount Int          @default(0) @map("processed_count")
+  successCount   Int          @default(0) @map("success_count")
+  failureCount   Int          @default(0) @map("failure_count")
+  errorMessage   String?      @map("error_message")
+  metadataJson   Json?        @map("metadata_json")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([jobName, createdAt])
+  @@index([organizationId, jobName, createdAt])
+  @@map("job_runs")
+}
+
+model OrganizationExportJob {
+  id               String         @id @default(uuid())
+  organizationId   String         @map("organization_id")
+  requestedByUserId String?       @map("requested_by_user_id")
+  status           ExportJobStatus
+  format           String         @default("json")
+  fileStoragePath  String?        @map("file_storage_path")
+  errorMessage     String?        @map("error_message")
+  metadataJson     Json?          @map("metadata_json")
+  requestedAt      DateTime       @default(now()) @map("requested_at")
+  completedAt      DateTime?      @map("completed_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedByUser User? @relation(fields: [requestedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, requestedAt])
+  @@index([status, requestedAt])
+  @@map("organization_export_jobs")
+}
+
+model LegalHold {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  reason         String
+  caseReference  String?  @map("case_reference")
+  active         Boolean  @default(true)
+  createdByUserId String? @map("created_by_user_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  releasedAt     DateTime? @map("released_at")
+  releasedByUserId String? @map("released_by_user_id")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser User? @relation("LegalHoldCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  releasedByUser User? @relation("LegalHoldReleasedBy", fields: [releasedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, active, createdAt])
+  @@map("legal_holds")
+}
+
+model CorrectiveAction {
+  id             String                 @id @default(uuid())
+  organizationId String                 @map("organization_id")
+  title          String
+  description    String?
+  ownerUserId    String?                @map("owner_user_id")
+  dueDate        DateTime?              @map("due_date")
+  closureDate    DateTime?              @map("closure_date")
+  status         CorrectiveActionStatus @default(open)
+  createdByUserId String?               @map("created_by_user_id")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ownerUser User? @relation("CorrectiveActionOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  createdByUser User? @relation("CorrectiveActionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, dueDate])
+  @@map("corrective_actions")
+}
+
+model PolicyAcceptance {
+  id             String             @id @default(uuid())
+  organizationId String             @map("organization_id")
+  userId         String             @map("user_id")
+  documentType   PolicyDocumentType @map("document_type")
+  documentVersion String            @map("document_version")
+  acceptedAt     DateTime           @default(now()) @map("accepted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, documentType, acceptedAt])
+  @@index([userId, documentType, acceptedAt])
+  @@map("policy_acceptances")
+}
+
+model AssignmentAttestation {
+  id             String                   @id @default(uuid())
+  organizationId String                   @map("organization_id")
+  clinicianId    String                   @map("clinician_id")
+  state          AssignmentAttestationState
+  reasonCode     String                   @map("reason_code")
+  reasonText     String?                  @map("reason_text")
+  attestedByUserId String?                @map("attested_by_user_id")
+  attestedByRole Role?                    @map("attested_by_role")
+  attestedAt     DateTime                 @default(now()) @map("attested_at")
+  expiresAt      DateTime?                @map("expires_at")
+  revokedByUserId String?                 @map("revoked_by_user_id")
+  revokedAt      DateTime?                @map("revoked_at")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clinician    Clinician    @relation(fields: [clinicianId], references: [id], onDelete: Cascade)
+  attestedByUser User?      @relation("AssignmentAttestedBy", fields: [attestedByUserId], references: [id])
+  revokedByUser User?       @relation("AssignmentRevokedBy", fields: [revokedByUserId], references: [id])
+
+  @@index([organizationId, clinicianId, createdAt])
+  @@index([state])
+  @@map("assignment_attestations")
+}
+
+model TemplatePublishAttestation {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  templateId     String   @map("template_id")
+  publishedByUserId String @map("published_by_user_id")
+  publishedByRole Role    @map("published_by_role")
+  publishedRevision Int   @map("published_revision")
+  jurisdictionState String? @map("jurisdiction_state")
+  discipline       Discipline? @map("discipline")
+  requiredCategoriesJson Json  @map("required_categories_json")
+  attestationAccepted Boolean  @default(false) @map("attestation_accepted")
+  attestationText String? @map("attestation_text")
+  publishedAt     DateTime @default(now()) @map("published_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template     ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  publishedByUser User @relation("TemplatePublishedBy", fields: [publishedByUserId], references: [id])
+
+  @@index([organizationId, templateId, publishedAt])
+  @@map("template_publish_attestations")
 }
 
 // ─── Internal Notes ─────────────────────────────────────

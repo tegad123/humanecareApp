@@ -34,7 +34,9 @@ import {
 import { ReviewModal } from "@/components/dashboard/review-modal";
 import { InternalNotes } from "@/components/dashboard/internal-notes";
 import { OverridePanel } from "@/components/dashboard/override-panel";
+import { AssignmentAttestationPanel } from "@/components/dashboard/assignment-attestation-panel";
 import { ExpirationIndicator } from "@/components/dashboard/expiration-indicator";
+import { ComplianceDisclaimer } from "@/components/dashboard/compliance-disclaimer";
 import {
   fetchClinician,
   fetchClinicianChecklist,
@@ -48,13 +50,18 @@ import {
   type ClinicianProgress,
   type InternalNote,
 } from "@/lib/api/admin";
-import { getDownloadUrl } from "@/lib/api/clinicians";
+import { getDownloadUrl, getSignatureCertificate } from "@/lib/api/clinicians";
 import JSZip from "jszip";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 
 function formatStatus(s: string) {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatAttestationState(state?: string | null) {
+  if (!state) return "Not Attested";
+  return state.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function statusIcon(status: string) {
@@ -178,6 +185,19 @@ export default function ClinicianDetailPage() {
     }
   };
 
+  const handleDownloadSignatureCertificate = async (itemId: string) => {
+    try {
+      const token = await getToken();
+      const certificate = await getSignatureCertificate(token, itemId);
+      if (!certificate.downloadUrl) {
+        throw new Error("Certificate file is not available.");
+      }
+      window.open(certificate.downloadUrl, "_blank");
+    } catch (err: any) {
+      setError(err.message || "Failed to download signature certificate.");
+    }
+  };
+
   const load = useCallback(async () => {
     try {
       const token = await getToken();
@@ -286,8 +306,28 @@ export default function ClinicianDetailPage() {
               {clinician.firstName} {clinician.lastName}
             </h1>
             <div className="flex items-center gap-2 mt-0.5">
+              <Badge status={clinician.systemStatus || clinician.status}>
+                System: {formatStatus(clinician.systemStatus || clinician.status)}
+              </Badge>
+              <Badge
+                variant={
+                  clinician.assignmentAttestation?.state === "attested"
+                    ? "success"
+                    : clinician.assignmentAttestation?.state === "expired"
+                      ? "warning"
+                      : "neutral"
+                }
+              >
+                Attestation:{" "}
+                {formatAttestationState(clinician.assignmentAttestation?.state)}
+              </Badge>
+              <Badge
+                variant={clinician.assignmentEligible ? "success" : "warning"}
+              >
+                Assignment Eligible: {clinician.assignmentEligible ? "Yes" : "No"}
+              </Badge>
               <Badge status={clinician.status}>
-                {formatStatus(clinician.status)}
+                Legacy: {formatStatus(clinician.status)}
               </Badge>
               <span className="text-sm text-slate-500">
                 {clinician.discipline}
@@ -330,8 +370,15 @@ export default function ClinicianDetailPage() {
         </div>
       </div>
 
+      <p className="text-xs text-slate-500">
+        Export notice: timestamps in downloaded evidence should be interpreted using your
+        organization timezone setting in Settings.
+      </p>
+
       {/* Override panel */}
+      <ComplianceDisclaimer />
       <OverridePanel clinician={clinician} onOverrideChanged={load} />
+      <AssignmentAttestationPanel clinician={clinician} onChanged={load} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left column — Profile + Notes */}
@@ -519,6 +566,15 @@ export default function ClinicianDetailPage() {
                                     Download Receipt
                                   </button>
                                 )}
+                                <button
+                                  onClick={() =>
+                                    handleDownloadSignatureCertificate(item.id)
+                                  }
+                                  className="text-xs text-primary-600 hover:text-primary-700 underline flex items-center gap-1"
+                                >
+                                  <Download className="h-3 w-3" />
+                                  Download Signature Certificate
+                                </button>
                               </div>
                             )}
                           </div>

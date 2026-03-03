@@ -26,7 +26,14 @@ export class ChecklistItemsController {
     @Req() req: Request,
   ) {
     const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
-    return this.checklistItemsService.submit(id, dto, user as AuthenticatedUser, clientIp);
+    const userAgent = (req.headers['user-agent'] as string) || null;
+    return this.checklistItemsService.submit(
+      id,
+      dto,
+      user as AuthenticatedUser,
+      clientIp,
+      userAgent,
+    );
   }
 
   @Patch(':id/review')
@@ -37,5 +44,17 @@ export class ChecklistItemsController {
     @CurrentUser() user: any,
   ) {
     return this.checklistItemsService.review(id, dto, user as AuthenticatedUser);
+  }
+
+  @Get(':id/signature-certificate')
+  @Roles('super_admin', 'admin', 'recruiter', 'compliance', 'clinician')
+  getSignatureCertificate(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.checklistItemsService.getSignatureCertificate(
+      id,
+      user as AuthenticatedUser,
+    );
   }
 }

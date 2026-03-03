@@ -29,12 +29,14 @@ export class OrgDocumentsController {
   }
 
   @Get()
+  @Roles('super_admin', 'admin', 'compliance')
   list(@CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
     return this.service.list(authUser.organizationId);
   }
 
   @Get('count')
+  @Roles('super_admin', 'admin', 'compliance')
   count(@CurrentUser() user: any) {
     const authUser = user as AuthenticatedUser;
     return this.service.count(authUser.organizationId);
@@ -52,6 +54,7 @@ export class OrgDocumentsController {
   }
 
   @Get(':id/download')
+  @Roles('super_admin', 'admin', 'compliance')
   getDownloadUrl(
     @Param('id') id: string,
     @CurrentUser() user: any,
@@ -61,12 +64,13 @@ export class OrgDocumentsController {
   }
 
   @Get(':id/clinician-download')
+  @Roles('super_admin', 'admin', 'recruiter', 'compliance', 'clinician')
   getClinicianDownloadUrl(
     @Param('id') id: string,
     @CurrentUser() user: any,
   ) {
     const authUser = user as AuthenticatedUser;
-    return this.service.getClinicianDownloadUrl(id, authUser.organizationId);
+    return this.service.getClinicianDownloadUrl(id, authUser);
   }
 
   @Delete(':id')

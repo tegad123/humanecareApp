@@ -18,6 +18,7 @@ import { EmailSettingsModule } from './modules/email-settings/email-settings.mod
 import { AccessRequestsModule } from './modules/access-requests/access-requests.module.js';
 import { BillingModule } from './modules/billing/billing.module.js';
 import { OrgDocumentsModule } from './modules/org-documents/org-documents.module.js';
+import { ExportsModule } from './modules/exports/exports.module.js';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { OrgDocumentsModule } from './modules/org-documents/org-documents.module
     AccessRequestsModule,
     BillingModule,
     OrgDocumentsModule,
+    ExportsModule,
   ],
 })
 export class AppModule {}

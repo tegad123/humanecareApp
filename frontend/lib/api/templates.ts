@@ -40,9 +40,32 @@ export interface Template {
   organizationId: string | null;
   sourceTemplateId: string | null;
   isCustomized: boolean;
+  publishedRevision?: number;
+  lastPublishedAt?: string | null;
+  lastPublishedById?: string | null;
   itemDefinitions?: ItemDefinition[];
   _count?: { itemDefinitions: number };
   createdAt: string;
+}
+
+export interface TemplatePublishChecklist {
+  reviewedLicense: boolean;
+  reviewedBackgroundCheck: boolean;
+  reviewedExclusionCheck: boolean;
+  reviewedLiabilityInsurance: boolean;
+  reviewedOrientation: boolean;
+  reviewedStateSpecificItems: boolean;
+  attestationAccepted: boolean;
+  jurisdictionState?: string;
+}
+
+export interface TemplatePublishResult {
+  templateId: string;
+  publishedRevision: number;
+  publishedAt: string;
+  jurisdictionState: string | null;
+  requiredChecks: Record<string, boolean>;
+  attestationAccepted: boolean;
 }
 
 /* ── Template CRUD ── */
@@ -59,6 +82,17 @@ export async function cloneTemplate(token: string | null, templateId: string, na
   return clientApiFetch<Template>(`/templates/${templateId}/clone`, token, {
     method: 'POST',
     body: JSON.stringify({ name }),
+  });
+}
+
+export async function publishTemplate(
+  token: string | null,
+  templateId: string,
+  checklist: TemplatePublishChecklist,
+) {
+  return clientApiFetch<TemplatePublishResult>(`/templates/${templateId}/publish`, token, {
+    method: 'POST',
+    body: JSON.stringify(checklist),
   });
 }
 

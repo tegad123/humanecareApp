@@ -174,6 +174,7 @@ export default function ChecklistItemPage() {
           payload.signerName = signerName.trim();
           payload.agreement = true;
           payload.signatureImage = signatureDataUrl;
+          payload.timezoneOffsetMinutes = new Date().getTimezoneOffset();
           break;
       }
 

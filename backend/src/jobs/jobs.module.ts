@@ -4,13 +4,16 @@ import { CliniciansModule } from '../modules/clinicians/clinicians.module.js';
 import { EmailService } from './email.service.js';
 import { ExpirationJobService } from './expiration-job.service.js';
 import { ReminderJobService } from './reminder-job.service.js';
+import { JobRunsService } from './job-runs.service.js';
+import { JobsController } from './jobs.controller.js';
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
     forwardRef(() => CliniciansModule),
   ],
-  providers: [EmailService, ExpirationJobService, ReminderJobService],
-  exports: [EmailService],
+  controllers: [JobsController],
+  providers: [EmailService, JobRunsService, ExpirationJobService, ReminderJobService],
+  exports: [EmailService, JobRunsService],
 })
 export class JobsModule {}

@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Search, AlertCircle } from 'lucide-react';
 import { Button, Badge, Card, CardContent, Spinner, ProgressBar } from '@/components/ui';
+import { ComplianceDisclaimer } from '@/components/dashboard/compliance-disclaimer';
 import {
   fetchClinicians,
   type ClinicianWithProgress,
@@ -102,6 +103,8 @@ export default function CliniciansListPage() {
           </Button>
         </Link>
       </div>
+
+      <ComplianceDisclaimer />
 
       {/* Filters */}
       <div data-tour="clinician-search" className="flex flex-wrap gap-3">
@@ -205,7 +208,20 @@ export default function CliniciansListPage() {
                       {c.discipline}
                     </td>
                     <td className="px-5 py-3">
-                      <Badge status={c.status}>{formatStatus(c.status)}</Badge>
+                      <div className="space-y-1">
+                        <Badge status={c.systemStatus || c.status}>
+                          System: {formatStatus(c.systemStatus || c.status)}
+                        </Badge>
+                        <Badge
+                          variant={
+                            c.assignmentEligible
+                              ? 'success'
+                              : 'warning'
+                          }
+                        >
+                          Assignment Eligible: {c.assignmentEligible ? 'Yes' : 'No'}
+                        </Badge>
+                      </div>
                     </td>
                     <td className="px-5 py-3 hidden sm:table-cell">
                       <div className="flex items-center gap-2 min-w-[120px]">

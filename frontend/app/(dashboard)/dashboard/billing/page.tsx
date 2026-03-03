@@ -227,6 +227,25 @@ export default function BillingPage() {
           </Button>
         </div>
       )}
+      {subscription?.accessMode === "read_only" && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+          <p className="text-sm font-medium text-amber-800">
+            Your organization is in read-only mode.
+            {subscription.gracePeriodEndsAt
+              ? ` Grace period ends ${new Date(subscription.gracePeriodEndsAt).toLocaleString()}.`
+              : " Resolve billing to restore full write access."}
+          </p>
+        </div>
+      )}
+      {subscription?.accessMode === "suspended" && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-4">
+          <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
+          <p className="text-sm font-medium text-red-800">
+            Your organization is suspended. Resolve billing to restore access.
+          </p>
+        </div>
+      )}
 
       {/* Inline error (non-fatal) */}
       {error && subscription && (

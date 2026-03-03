@@ -10,6 +10,9 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { EmailService } from '../../jobs/email.service.js';
 import { InviteUserDto } from './dto/invite-user.dto.js';
 import { Role } from '../../../generated/prisma/client.js';
+import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
+
+type ActorContext = { id: string; role: string; organizationId: string };
 
 @Injectable()
 export class UsersService {
@@ -19,9 +22,10 @@ export class UsersService {
     private prisma: PrismaService,
     private emailService: EmailService,
     private config: ConfigService,
+    private auditLogs: AuditLogsService,
   ) {}
 
-  async invite(dto: InviteUserDto) {
+  async invite(dto: InviteUserDto, actor?: ActorContext) {
     // Check org exists
     const org = await this.prisma.organization.findUnique({
       where: { id: dto.organizationId },
@@ -93,6 +97,23 @@ export class UsersService {
 
     this.logger.log(`Invited user: ${dto.email} to org ${org.name} as ${dto.role}`);
 
+    await this.auditLogs.log({
+      organizationId: org.id,
+      actorUserId: actor?.id,
+      actorRole: actor?.role as any,
+      entityType: 'user',
+      entityId: user.id,
+      action: 'user_invited',
+      details: {
+        email: user.email,
+        role: user.role,
+      },
+      newValue: {
+        email: user.email,
+        role: user.role,
+      },
+    });
+
     return {
       id: user.id,
       email: user.email,
@@ -107,12 +128,156 @@ export class UsersService {
       where: { id: userId },
       include: {
         organization: {
-          select: { id: true, name: true, planTier: true, planFlags: true },
+          select: {
+            id: true,
+            name: true,
+            planTier: true,
+            planFlags: true,
+            requireDualApprovalForHighRiskOverride: true,
+          },
         },
       },
     });
     if (!user) throw new NotFoundException('User not found');
     return user;
+  }
+
+  async getOrganizationComplianceSettings(organizationId: string) {
+    let row:
+      | {
+          id: string;
+          require_dual_approval_for_high_risk_override: boolean;
+          timezone: string | null;
+          retention_days: number;
+        }
+      | undefined;
+    try {
+      const rows = await this.prisma.$queryRaw<
+        Array<{
+          id: string;
+          require_dual_approval_for_high_risk_override: boolean;
+          timezone: string | null;
+          retention_days: number;
+        }>
+      >`
+        SELECT
+          id,
+          require_dual_approval_for_high_risk_override,
+          timezone,
+          retention_days
+        FROM organizations
+        WHERE id = ${organizationId}
+        LIMIT 1
+      `;
+      row = rows[0];
+    } catch {
+      // Backward-compatible fallback before Phase 3 migration is applied.
+      const rows = await this.prisma.$queryRaw<
+        Array<{
+          id: string;
+          require_dual_approval_for_high_risk_override: boolean;
+          timezone: string | null;
+        }>
+      >`
+        SELECT
+          id,
+          require_dual_approval_for_high_risk_override,
+          timezone
+        FROM organizations
+        WHERE id = ${organizationId}
+        LIMIT 1
+      `;
+      const legacy = rows[0];
+      if (legacy) {
+        row = {
+          ...legacy,
+          retention_days: 2555,
+        };
+      }
+    }
+
+    if (!row) throw new NotFoundException('Organization not found');
+    return {
+      id: row.id,
+      requireDualApprovalForHighRiskOverride:
+        row.require_dual_approval_for_high_risk_override,
+      timezone: row.timezone,
+      retentionDays: row.retention_days,
+    };
+  }
+
+  async updateOrganizationComplianceSettings(
+    organizationId: string,
+    data: {
+      requireDualApprovalForHighRiskOverride?: boolean;
+      timezone?: string;
+      retentionDays?: number;
+    },
+    actor?: ActorContext,
+  ) {
+    const current = await this.getOrganizationComplianceSettings(organizationId);
+
+    const nextRequireDualApproval =
+      data.requireDualApprovalForHighRiskOverride ??
+      current.requireDualApprovalForHighRiskOverride;
+    const nextTimezone = data.timezone ?? current.timezone;
+    const nextRetentionDays = data.retentionDays ?? current.retentionDays;
+
+    try {
+      await this.prisma.$executeRaw`
+        UPDATE organizations
+        SET
+          require_dual_approval_for_high_risk_override = ${nextRequireDualApproval},
+          timezone = ${nextTimezone},
+          retention_days = ${nextRetentionDays},
+          updated_at = NOW()
+        WHERE id = ${organizationId}
+      `;
+    } catch {
+      // Backward-compatible fallback before Phase 3 migration is applied.
+      await this.prisma.$executeRaw`
+        UPDATE organizations
+        SET
+          require_dual_approval_for_high_risk_override = ${nextRequireDualApproval},
+          timezone = ${nextTimezone},
+          updated_at = NOW()
+        WHERE id = ${organizationId}
+      `;
+    }
+
+    const updated = await this.getOrganizationComplianceSettings(organizationId);
+
+    await this.auditLogs.log({
+      organizationId,
+      actorUserId: actor?.id,
+      actorRole: actor?.role as any,
+      entityType: 'organization',
+      entityId: organizationId,
+      action: 'organization_settings_updated',
+      details: {
+        fields: [
+          ...(data.requireDualApprovalForHighRiskOverride !== undefined
+            ? ['requireDualApprovalForHighRiskOverride']
+            : []),
+          ...(data.timezone !== undefined ? ['timezone'] : []),
+          ...(data.retentionDays !== undefined ? ['retentionDays'] : []),
+        ],
+      },
+      oldValue: {
+        requireDualApprovalForHighRiskOverride:
+          current.requireDualApprovalForHighRiskOverride,
+        timezone: current.timezone,
+        retentionDays: current.retentionDays,
+      },
+      newValue: {
+        requireDualApprovalForHighRiskOverride:
+          updated.requireDualApprovalForHighRiskOverride,
+        timezone: updated.timezone,
+        retentionDays: updated.retentionDays,
+      },
+    });
+
+    return updated;
   }
 
   async findByOrganization(organizationId: string) {
@@ -134,7 +299,12 @@ export class UsersService {
       where: { clerkUserId },
       include: {
         organization: {
-          select: { id: true, name: true, planTier: true },
+          select: {
+            id: true,
+            name: true,
+            planTier: true,
+            requireDualApprovalForHighRiskOverride: true,
+          },
         },
       },
     });
@@ -200,6 +370,20 @@ export class UsersService {
       `User ${actingUser.id} changed role of ${target.email} from ${target.role} to ${newRole}`,
     );
 
+    await this.auditLogs.log({
+      organizationId: actingUser.organizationId,
+      actorUserId: actingUser.id,
+      actorRole: actingUser.role as any,
+      entityType: 'user',
+      entityId: targetUserId,
+      action: 'user_role_updated',
+      details: {
+        email: target.email,
+      },
+      oldValue: { role: target.role },
+      newValue: { role: newRole },
+    });
+
     return updated;
   }
 
@@ -235,6 +419,23 @@ export class UsersService {
     this.logger.log(
       `User ${actingUser.id} removed team member ${target.email} (${target.role})`,
     );
+
+    await this.auditLogs.log({
+      organizationId: actingUser.organizationId,
+      actorUserId: actingUser.id,
+      actorRole: actingUser.role as any,
+      entityType: 'user',
+      entityId: targetUserId,
+      action: 'user_removed',
+      details: {
+        email: target.email,
+      },
+      oldValue: {
+        email: target.email,
+        role: target.role,
+      },
+      newValue: {},
+    });
 
     return { message: 'Team member removed' };
   }

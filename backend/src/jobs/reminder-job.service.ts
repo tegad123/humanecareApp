@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { EmailService } from './email.service.js';
 import { AuditLogsService } from '../modules/audit-logs/audit-logs.service.js';
 import { ChecklistItemStatus } from '../../generated/prisma/client.js';
+import { JobRunsService } from './job-runs.service.js';
 
 /**
  * Daily cron job that runs at 8:00 AM to send expiration reminders.
@@ -26,6 +27,7 @@ export class ReminderJobService {
     private prisma: PrismaService,
     private emailService: EmailService,
     private auditLogs: AuditLogsService,
+    private jobRuns: JobRunsService,
   ) {}
 
   /**
@@ -35,26 +37,58 @@ export class ReminderJobService {
   async handleReminders() {
     this.logger.log('Starting daily reminder check...');
 
-    try {
-      let totalReminders = 0;
+    let runId: string | null = null;
+    const totals = {
+      processedCount: 0,
+      successCount: 0,
+      failureCount: 0,
+    };
+    const byDay: Record<number, { processed: number; success: number; failure: number }> = {};
 
+    try {
+      runId = await this.jobRuns.startRun('expiration-reminders');
+    } catch (error) {
+      this.jobRuns.logFallback('expiration-reminders', error);
+    }
+
+    try {
       for (const daysAhead of this.REMINDER_DAYS) {
-        const count = await this.processRemindersForDay(daysAhead);
-        totalReminders += count;
+        const counts = await this.processRemindersForDay(daysAhead);
+        byDay[daysAhead] = {
+          processed: counts.processedCount,
+          success: counts.successCount,
+          failure: counts.failureCount,
+        };
+        totals.processedCount += counts.processedCount;
+        totals.successCount += counts.successCount;
+        totals.failureCount += counts.failureCount;
       }
 
       this.logger.log(
-        `Reminder check complete. ${totalReminders} reminder(s) sent.`,
+        `Reminder check complete. ${totals.successCount} reminder(s) sent, ${totals.failureCount} failure(s).`,
       );
+
+      if (runId) {
+        await this.jobRuns.completeRun(runId, totals, { byDay });
+      }
     } catch (error: any) {
       this.logger.error(`Reminder job failed: ${error.message}`, error.stack);
+      if (runId) {
+        await this.jobRuns.failRun(runId, error.message || 'Reminder job failed', totals, {
+          byDay,
+        });
+      }
     }
   }
 
   /**
    * Find items expiring exactly `daysAhead` days from now and send reminders.
    */
-  private async processRemindersForDay(daysAhead: number): Promise<number> {
+  private async processRemindersForDay(daysAhead: number): Promise<{
+    processedCount: number;
+    successCount: number;
+    failureCount: number;
+  }> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -89,54 +123,69 @@ export class ReminderJobService {
       },
     });
 
-    if (expiringItems.length === 0) return 0;
+    if (expiringItems.length === 0) {
+      return { processedCount: 0, successCount: 0, failureCount: 0 };
+    }
 
     this.logger.log(
       `Found ${expiringItems.length} item(s) expiring in ${daysAhead} day(s).`,
     );
 
-    let sentCount = 0;
+    let processedCount = 0;
+    let successCount = 0;
+    let failureCount = 0;
 
     for (const item of expiringItems) {
+      processedCount++;
       const clinicianName = `${item.clinician.firstName} ${item.clinician.lastName}`;
 
-      // Send reminder to clinician
-      await this.emailService.sendExpirationReminder(
-        item.clinician.email,
-        clinicianName,
-        item.itemDefinition.label,
-        daysAhead,
-        item.expiresAt!,
-      );
-
-      // Also notify org admins for items expiring within 7 days
-      if (daysAhead <= 7) {
-        await this.notifyOrgAdmins(
-          item.clinician.organizationId,
+      try {
+        // Send reminder to clinician
+        await this.emailService.sendExpirationReminder(
+          item.clinician.email,
           clinicianName,
           item.itemDefinition.label,
           daysAhead,
+          item.expiresAt!,
+        );
+
+        // Also notify org admins for items expiring within 7 days
+        let adminNotificationFailures = 0;
+        if (daysAhead <= 7) {
+          adminNotificationFailures = await this.notifyOrgAdmins(
+            item.clinician.organizationId,
+            clinicianName,
+            item.itemDefinition.label,
+            daysAhead,
+          );
+        }
+
+        // Log the reminder
+        await this.auditLogs.log({
+          organizationId: item.clinician.organizationId,
+          clinicianId: item.clinician.id,
+          entityType: 'checklist_item',
+          entityId: item.id,
+          action: 'expiration_reminder_sent',
+          details: {
+            label: item.itemDefinition.label,
+            daysUntilExpiry: daysAhead,
+            expiresAt: item.expiresAt?.toISOString(),
+            adminNotificationFailures,
+          },
+        });
+
+        successCount++;
+        failureCount += adminNotificationFailures;
+      } catch (error: any) {
+        failureCount++;
+        this.logger.warn(
+          `Failed reminder for item ${item.id} (${daysAhead} day(s) ahead): ${error.message}`,
         );
       }
-
-      // Log the reminder
-      await this.auditLogs.log({
-        organizationId: item.clinician.organizationId,
-        clinicianId: item.clinician.id,
-        entityType: 'checklist_item',
-        entityId: item.id,
-        action: 'expiration_reminder_sent',
-        details: {
-          label: item.itemDefinition.label,
-          daysUntilExpiry: daysAhead,
-          expiresAt: item.expiresAt?.toISOString(),
-        },
-      });
-
-      sentCount++;
     }
 
-    return sentCount;
+    return { processedCount, successCount, failureCount };
   }
 
   /**
@@ -147,7 +196,7 @@ export class ReminderJobService {
     clinicianName: string,
     itemLabel: string,
     daysUntilExpiry: number,
-  ): Promise<void> {
+  ): Promise<number> {
     const admins = await this.prisma.user.findMany({
       where: {
         organizationId,
@@ -156,13 +205,19 @@ export class ReminderJobService {
       select: { email: true },
     });
 
+    let failures = 0;
     for (const admin of admins) {
-      await this.emailService.sendAdminExpirationAlert(
-        admin.email,
-        clinicianName,
-        itemLabel,
-        daysUntilExpiry,
-      );
+      try {
+        await this.emailService.sendAdminExpirationAlert(
+          admin.email,
+          clinicianName,
+          itemLabel,
+          daysUntilExpiry,
+        );
+      } catch {
+        failures++;
+      }
     }
+    return failures;
   }
 }

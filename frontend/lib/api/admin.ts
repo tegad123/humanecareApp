@@ -9,8 +9,23 @@ export type { Clinician, ChecklistItem, ClinicianProgress };
 
 /* ── Extended types for admin views ── */
 
+export interface AssignmentAttestation {
+  state: 'attested' | 'revoked' | 'expired';
+  reasonCode: string;
+  reasonText: string | null;
+  attestedByUserId: string | null;
+  attestedByRole: string | null;
+  attestedAt: string | null;
+  expiresAt: string | null;
+  revokedByUserId: string | null;
+  revokedAt: string | null;
+}
+
 export interface ClinicianWithProgress extends Clinician {
   progress: ClinicianProgress;
+  systemStatus?: string;
+  assignmentAttestation?: AssignmentAttestation | null;
+  assignmentEligible?: boolean;
   template?: { id: string; name: string };
   assignedRecruiter?: { id: string; name: string; email: string } | null;
   adminOverrideActive?: boolean;
@@ -30,6 +45,29 @@ export interface ClinicianStats {
   onboarding: number;
   notReady: number;
   inactive: number;
+}
+
+export interface ReminderHealth {
+  timezone: string | null;
+  timezoneConfigured: boolean;
+  lastRun: {
+    id: string;
+    status: 'running' | 'success' | 'failed';
+    startedAt: string;
+    finishedAt: string | null;
+    processedCount: number;
+    successCount: number;
+    failureCount: number;
+    errorMessage: string | null;
+  } | null;
+  recent7d: {
+    totalRuns: number;
+    failedRuns: number;
+    lastFailureAt: string | null;
+    emailFailureCount: number;
+    bounceCount: number;
+    complaintCount: number;
+  };
 }
 
 export interface ChecklistTemplate {
@@ -64,6 +102,10 @@ export interface AuditLog {
 
 export async function fetchStats(token: string | null) {
   return clientApiFetch<ClinicianStats>('/clinicians/stats', token);
+}
+
+export async function fetchReminderHealth(token: string | null) {
+  return clientApiFetch<ReminderHealth>('/jobs/reminder-health', token);
 }
 
 /* ── Clinician CRUD ── */
@@ -172,6 +214,7 @@ export async function addNote(token: string | null, clinicianId: string, content
 export interface OverrideResult {
   overrideActive: boolean;
   overrideValue?: string;
+  reasonCode?: string;
   reason?: string;
   expiresAt?: string;
   status?: string;
@@ -180,7 +223,13 @@ export interface OverrideResult {
 export async function setOverride(
   token: string | null,
   clinicianId: string,
-  data: { reason: string; expiresInHours: number; overrideValue?: string },
+  data: {
+    reasonCode: string;
+    reasonText?: string;
+    expiresInHours: number;
+    overrideValue?: string;
+    secondApproverUserId?: string;
+  },
 ) {
   return clientApiFetch<OverrideResult>(`/clinicians/${clinicianId}/override`, token, {
     method: 'POST',
@@ -191,6 +240,47 @@ export async function setOverride(
 export async function clearOverride(token: string | null, clinicianId: string) {
   return clientApiFetch<OverrideResult>(`/clinicians/${clinicianId}/override`, token, {
     method: 'DELETE',
+  });
+}
+
+export async function fetchReadiness(token: string | null, clinicianId: string) {
+  return clientApiFetch<{
+    clinicianId: string;
+    systemStatus: string;
+    assignmentAttestation: AssignmentAttestation | null;
+    assignmentEligible: boolean;
+  }>(`/clinicians/${clinicianId}/readiness`, token);
+}
+
+export async function attestAssignment(
+  token: string | null,
+  clinicianId: string,
+  data: { reasonCode: string; reasonText?: string; expiresInHours?: number },
+) {
+  return clientApiFetch<{
+    clinicianId: string;
+    systemStatus: string;
+    assignmentAttestation: AssignmentAttestation | null;
+    assignmentEligible: boolean;
+  }>(`/clinicians/${clinicianId}/attest-assignment`, token, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function revokeAssignmentAttestation(
+  token: string | null,
+  clinicianId: string,
+  data: { reasonCode: string; reasonText?: string },
+) {
+  return clientApiFetch<{
+    clinicianId: string;
+    systemStatus: string;
+    assignmentAttestation: AssignmentAttestation | null;
+    assignmentEligible: boolean;
+  }>(`/clinicians/${clinicianId}/revoke-attestation`, token, {
+    method: 'POST',
+    body: JSON.stringify(data),
   });
 }
 

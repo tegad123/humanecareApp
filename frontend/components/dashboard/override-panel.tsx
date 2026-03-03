@@ -10,6 +10,14 @@ import {
   type ClinicianWithProgress,
 } from '@/lib/api/admin';
 
+const OVERRIDE_REASON_OPTIONS = [
+  { value: 'emergency_staffing', label: 'Emergency staffing' },
+  { value: 'temporary_transfer', label: 'Temporary transfer' },
+  { value: 'documentation_pending', label: 'Documentation pending' },
+  { value: 'admin_exception', label: 'Admin exception' },
+  { value: 'other', label: 'Other' },
+];
+
 interface OverridePanelProps {
   clinician: ClinicianWithProgress;
   onOverrideChanged: () => void;
@@ -27,7 +35,9 @@ function timeRemaining(expiresAt: string) {
 export function OverridePanel({ clinician, onOverrideChanged }: OverridePanelProps) {
   const { getToken } = useAuth();
   const [showForm, setShowForm] = useState(false);
-  const [reason, setReason] = useState('');
+  const [reasonCode, setReasonCode] = useState('emergency_staffing');
+  const [reasonText, setReasonText] = useState('');
+  const [secondApproverUserId, setSecondApproverUserId] = useState('');
   const [hours, setHours] = useState(24);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,21 +45,21 @@ export function OverridePanel({ clinician, onOverrideChanged }: OverridePanelPro
   const isOverrideActive = clinician.adminOverrideActive;
 
   const handleSetOverride = async () => {
-    if (!reason.trim()) {
-      setError('Reason is required.');
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
       const token = await getToken();
       await setOverride(token, clinician.id, {
-        reason: reason.trim(),
+        reasonCode,
+        reasonText: reasonText.trim() || undefined,
         expiresInHours: hours,
         overrideValue: 'ready',
+        secondApproverUserId: secondApproverUserId.trim() || undefined,
       });
       setShowForm(false);
-      setReason('');
+      setReasonCode('emergency_staffing');
+      setReasonText('');
+      setSecondApproverUserId('');
       onOverrideChanged();
     } catch (err: any) {
       setError(err.message || 'Failed to set override');
@@ -116,7 +126,7 @@ export function OverridePanel({ clinician, onOverrideChanged }: OverridePanelPro
   }
 
   // Only show override option when status is not_ready
-  if (clinician.status === 'ready') return null;
+  if ((clinician.systemStatus || clinician.status) === 'ready') return null;
 
   return (
     <Card>
@@ -142,14 +152,43 @@ export function OverridePanel({ clinician, onOverrideChanged }: OverridePanelPro
 
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">
-                Reason *
+                Reason Code *
+              </label>
+              <select
+                value={reasonCode}
+                onChange={(e) => setReasonCode(e.target.value)}
+                className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                {OVERRIDE_REASON_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Reason Details (Optional)
               </label>
               <textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
+                value={reasonText}
+                onChange={(e) => setReasonText(e.target.value)}
                 rows={2}
                 className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
-                placeholder="Why is this override needed?"
+                placeholder="Add context for this exception"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Second Approver User ID (Optional)
+              </label>
+              <input
+                value={secondApproverUserId}
+                onChange={(e) => setSecondApproverUserId(e.target.value)}
+                className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="Required if high-risk dual approval is enabled"
               />
             </div>
 
@@ -176,12 +215,15 @@ export function OverridePanel({ clinician, onOverrideChanged }: OverridePanelPro
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => {
-                  setShowForm(false);
-                  setError(null);
-                }}
-              >
-                Cancel
+                  onClick={() => {
+                    setShowForm(false);
+                    setError(null);
+                    setReasonCode('emergency_staffing');
+                    setReasonText('');
+                    setSecondApproverUserId('');
+                  }}
+                >
+                  Cancel
               </Button>
               <Button
                 size="sm"

@@ -5,6 +5,8 @@ import { clientApiFetch } from '../api-client';
 export interface SubscriptionInfo {
   organizationId: string;
   planTier: 'starter' | 'growth' | 'pro';
+  accessMode: 'active' | 'read_only' | 'suspended';
+  gracePeriodEndsAt: string | null;
   stripeSubscriptionId: string | null;
   billingEmail: string | null;
   subscription: {

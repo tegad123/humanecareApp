@@ -354,7 +354,7 @@ export default function LandingPage() {
               { title: 'Expiration Tracking & Reminders', desc: 'Daily cron jobs check every document expiration date. Automated reminders go out at 30, 14, 7 days — and on day of. Status flips automatically if not renewed.' },
               { title: 'Discipline Checklist Templates', desc: 'Build reusable templates per discipline (PT, OT, SLP, MSW, PTA, COTA). Assign the right checklist to each clinician at creation — no manual setup per hire.' },
               { title: 'Secure Magic Link Upload', desc: 'Clinicians receive a secure, tokenized link to upload their own documents. No account creation. No friction. No credentials to manage for contract staff.' },
-              { title: 'Full Audit Trail', desc: 'Every action — approval, rejection, override, status change — is logged with a timestamp and admin identity. Surveyor-ready. Attorney-defensible.' },
+              { title: 'Full Audit Trail', desc: 'Every approval, rejection, override, and status change is logged with timestamps and actor identity to support internal review, audits, and legal response workflows.' },
               { title: 'Admin Review & Override', desc: 'Admins approve or reject uploaded documents individually. Override controls available for eligible items, with full restrictions on expired license overrides.' },
               { title: 'Multi-Tenant Architecture', desc: 'Each agency is fully isolated. Invite your operations team with role-based access. Data never crosses tenant boundaries — built for healthcare data handling from day one.' },
               { title: 'Document Upload & Storage', desc: 'Clinicians upload licenses, CPR cards, TB results, W-9s, background checks, and more. All stored securely and linked to the specific checklist item.' },
@@ -373,7 +373,7 @@ export default function LandingPage() {
                 <ShieldCheckIcon />
               </div>
               <h3 className="font-[family-name:var(--font-bricolage)] font-bold text-white text-base mb-2">No Patient PHI Stored</h3>
-              <p className="text-white/70 text-sm leading-relaxed">Credentis is a clinician credentialing platform. It does not store, process, or expose patient health information — reducing your data governance surface significantly.</p>
+              <p className="text-white/70 text-sm leading-relaxed">Credentis is focused on clinician credentialing workflows. Agencies remain responsible for managing PHI and confirming whether a BAA and additional safeguards are required for their environment.</p>
             </div>
           </div>
         </div>
@@ -395,7 +395,7 @@ export default function LandingPage() {
                 { step: 2, title: 'Magic Link Sent', desc: 'Clinician receives a secure, one-time link to their personal credential upload portal.', highlight: false },
                 { step: 3, title: 'Clinician Uploads', desc: 'They upload each required document directly. No account. No login. No friction.', highlight: false },
                 { step: 4, title: 'Admin Reviews', desc: 'Approve or reject each item. Every decision is logged with timestamp and rationale.', highlight: false },
-                { step: 5, title: 'Ready to Staff', desc: 'Status updates automatically. Credentis monitors expiration dates from here on — forever.', highlight: true, green: true },
+                { step: 5, title: 'Ready to Staff', desc: 'Status updates as checklist and review data changes, based on your configured requirements and ongoing expiration monitoring.', highlight: true, green: true },
               ].map((s) => (
                 <div key={s.step} className="text-center">
                   <div className={`w-16 h-16 rounded-2xl ${s.green ? 'bg-green-500 shadow-lg shadow-green-500/20' : s.highlight ? 'bg-primary-600 shadow-lg shadow-primary-600/20' : 'bg-slate-100'} ${s.green || s.highlight ? 'text-white' : 'text-slate-600'} flex items-center justify-center mx-auto mb-4`}>
@@ -413,7 +413,7 @@ export default function LandingPage() {
             </div>
             <div className="flex-1">
               <h4 className="font-[family-name:var(--font-bricolage)] font-bold text-slate-900 mb-1">After the clinician goes active, Credentis keeps watching.</h4>
-              <p className="text-slate-500 text-sm">Daily jobs check every document&apos;s expiration date against the current date. Reminders fire automatically. If a credential isn&apos;t renewed, the clinician&apos;s status flips to Not Compliant — protecting your agency from placing an out-of-compliance clinician without knowing it.</p>
+              <p className="text-slate-500 text-sm">Daily jobs check each document&apos;s expiration date and send reminders. If an item expires without renewal and approval, clinician status updates automatically based on configured rules and should be reviewed by your team before assignment.</p>
             </div>
           </div>
         </div>
@@ -478,7 +478,7 @@ export default function LandingPage() {
           <div className="space-y-3">
             <FAQItem question="Is Credentis HIPAA-compliant?" answer="Credentis v1 does not store patient Protected Health Information (PHI). We only store clinician credential data — licenses, certifications, and employment documents. This significantly reduces HIPAA exposure. We implement standard security controls including encrypted storage and access logging. If your legal team requires a formal BAA, please contact us." />
             <FAQItem question="Does the clinician need to create an account?" answer="No. Clinicians receive a secure, tokenized magic link via email. They click the link, upload their documents, and they're done. No username, no password, no app to download. This is intentional — contract clinicians work across multiple agencies and shouldn't be burdened with another account." />
-            <FAQItem question="What happens when a credential expires?" answer="Credentis runs daily expiration checks. When a document is within 30 days of expiration, automated reminders are sent at 30, 14, 7, and 0 days. If the document is not renewed and approved before the expiration date, the clinician's status automatically flips to &quot;Not Compliant.&quot; Admins can manually override some credential statuses, but expired licenses cannot be overridden — protecting your agency from placing a clinician with an invalid license." />
+            <FAQItem question="What happens when a credential expires?" answer="Credentis runs daily expiration checks. When a document is within 30 days of expiration, automated reminders are sent at 30, 14, 7, and 0 days. If the document is not renewed and approved before expiration, the clinician&apos;s status updates based on your workflow rules. Admin overrides are available for eligible scenarios, while expired license safeguards remain enforced." />
             <FAQItem question="Can I customize the checklist for different disciplines?" answer="Yes. You create checklist templates for each discipline your agency works with — PT, OT, SLP, MSW, PTA, COTA, and others. Each template specifies exactly which documents are required, which are optional, and which require an expiration date. When you create a new clinician record, you assign the appropriate template and it applies automatically." />
             <FAQItem question="How quickly can we get set up?" answer="Most agencies are operational within 24 hours of signing up. You'll build your checklist templates (which takes 20-45 minutes depending on how many disciplines you staff), then begin adding clinicians. There's no migration project, no implementation consultant, and no professional services engagement required." />
             <FAQItem question="Is there a contract or long-term commitment?" answer="No. Credentis is month-to-month. You can cancel at any time with no penalty. We don't believe in trapping customers — we believe in building a product that earns continued use every month." />
@@ -531,7 +531,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="border-t border-slate-800 mt-8 pt-8 text-xs text-slate-600 text-center">
-            &copy; 2026 Credentis. All rights reserved. Not a HIPAA Business Associate by default — contact us for BAA arrangements.
+            &copy; 2026 Credentis. All rights reserved. HIPAA/BAA requirements depend on your use case and data flows; contact us for BAA options.
           </div>
         </div>
       </footer>

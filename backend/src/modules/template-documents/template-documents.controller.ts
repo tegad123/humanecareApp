@@ -28,6 +28,7 @@ export class TemplateDocumentsController {
   }
 
   @Get(':templateId/documents')
+  @Roles('super_admin', 'admin', 'compliance')
   listDocuments(
     @Param('templateId') templateId: string,
     @CurrentUser() user: any,
@@ -37,6 +38,7 @@ export class TemplateDocumentsController {
   }
 
   @Get(':templateId/documents/:docId/download')
+  @Roles('super_admin', 'admin', 'compliance')
   getDownloadUrl(
     @Param('docId') docId: string,
     @CurrentUser() user: any,
@@ -46,12 +48,13 @@ export class TemplateDocumentsController {
   }
 
   @Get(':templateId/documents/:docId/clinician-download')
+  @Roles('super_admin', 'admin', 'recruiter', 'compliance', 'clinician')
   getClinicianDownloadUrl(
     @Param('docId') docId: string,
     @CurrentUser() user: any,
   ) {
     const authUser = user as AuthenticatedUser;
-    return this.service.getClinicianDownloadUrl(docId, authUser.organizationId);
+    return this.service.getClinicianDownloadUrl(docId, authUser);
   }
 
   @Delete(':templateId/documents/:docId')
