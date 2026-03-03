@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useAuth } from '@clerk/nextjs';
+import { useAuth, UserProfile } from '@clerk/nextjs';
 import {
   Shield,
   UserPlus,
   AlertCircle,
   CheckCircle,
   Trash2,
+  User,
 } from 'lucide-react';
 import {
   Card,
@@ -573,6 +574,36 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Account Settings ── */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <User className="h-4 w-4 text-slate-400" />
+            <h2 className="text-sm font-semibold text-slate-900">Account</h2>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Update your email address or delete your account.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <UserProfile
+            routing="hash"
+            appearance={{
+              elements: {
+                rootBox: 'w-full',
+                cardBox: 'shadow-none w-full',
+                card: 'shadow-none border-none w-full',
+                navbar: 'hidden',
+                navbarMobileMenuButton: 'hidden',
+                headerTitle: 'hidden',
+                headerSubtitle: 'hidden',
+                pageScrollBox: 'p-0',
+              },
+            }}
+          />
         </CardContent>
       </Card>
 

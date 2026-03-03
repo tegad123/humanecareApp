@@ -525,7 +525,7 @@ export default function LandingPage() {
             </div>
             <div className="flex gap-6 text-sm text-slate-500">
               <Link href="/request-access" className="hover:text-slate-300 transition-colors">Request Access</Link>
-              <a href="#" className="hover:text-slate-300 transition-colors">Privacy</a>
+              <Link href="/privacy" className="hover:text-slate-300 transition-colors">Privacy</Link>
               <a href="#" className="hover:text-slate-300 transition-colors">Terms</a>
               <a href="mailto:support@credentis.com" className="hover:text-slate-300 transition-colors">Contact</a>
             </div>
