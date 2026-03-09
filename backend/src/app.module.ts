@@ -19,6 +19,7 @@ import { AccessRequestsModule } from './modules/access-requests/access-requests.
 import { BillingModule } from './modules/billing/billing.module.js';
 import { OrgDocumentsModule } from './modules/org-documents/org-documents.module.js';
 import { ExportsModule } from './modules/exports/exports.module.js';
+import { DocumentScannerModule } from './modules/document-scanner/document-scanner.module.js';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { ExportsModule } from './modules/exports/exports.module.js';
     BillingModule,
     OrgDocumentsModule,
     ExportsModule,
+    DocumentScannerModule,
   ],
 })
 export class AppModule {}

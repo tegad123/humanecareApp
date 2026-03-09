@@ -98,6 +98,26 @@ enum ExportJobStatus {
   failed
 }
 
+enum BulkUploadJobStatus {
+  pending
+  uploading
+  scanning
+  review
+  completed
+  failed
+}
+
+enum BulkUploadDocumentStatus {
+  pending_upload
+  uploaded
+  scanning
+  scanned
+  matched
+  committed
+  failed
+  skipped
+}
+
 enum CorrectiveActionStatus {
   open
   closed
@@ -144,6 +164,7 @@ model Organization {
   legalHolds              LegalHold[]
   correctiveActions       CorrectiveAction[]
   policyAcceptances       PolicyAcceptance[]
+  bulkUploadJobs          BulkUploadJob[]
 
   @@map("organizations")
 }
@@ -175,6 +196,7 @@ model User {
   correctiveActionsOwned CorrectiveAction[] @relation("CorrectiveActionOwner")
   correctiveActionsCreated CorrectiveAction[] @relation("CorrectiveActionCreatedBy")
   policyAcceptances PolicyAcceptance[]
+  bulkUploadsCreated BulkUploadJob[] @relation("BulkUploadCreatedBy")
 
   @@index([organizationId])
   @@index([clerkUserId])
@@ -621,6 +643,67 @@ model InternalNote {
 
   @@index([organizationId, clinicianId])
   @@map("internal_notes")
+}
+
+// ─── Bulk Upload ───────────────────────────────────────
+
+model BulkUploadJob {
+  id               String              @id @default(uuid())
+  organizationId   String              @map("organization_id")
+  createdByUserId  String              @map("created_by_user_id")
+  status           BulkUploadJobStatus @default(pending)
+  totalFiles       Int                 @default(0) @map("total_files")
+  processedFiles   Int                 @default(0) @map("processed_files")
+  matchedFiles     Int                 @default(0) @map("matched_files")
+  committedFiles   Int                 @default(0) @map("committed_files")
+  failedFiles      Int                 @default(0) @map("failed_files")
+  errorMessage     String?             @map("error_message")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+  completedAt      DateTime?           @map("completed_at")
+
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser    User                @relation("BulkUploadCreatedBy", fields: [createdByUserId], references: [id])
+  documents        BulkUploadDocument[]
+
+  @@index([organizationId, createdAt])
+  @@index([status])
+  @@map("bulk_upload_jobs")
+}
+
+model BulkUploadDocument {
+  id                       String                   @id @default(uuid())
+  bulkUploadJobId          String                   @map("bulk_upload_job_id")
+  organizationId           String                   @map("organization_id")
+  storagePath              String                   @map("storage_path")
+  originalFileName         String                   @map("original_file_name")
+  mimeType                 String                   @map("mime_type")
+  fileSizeBytes            Int?                     @map("file_size_bytes")
+  status                   BulkUploadDocumentStatus @default(pending_upload)
+
+  // AI-extracted fields
+  aiExtractedDocType       String?                  @map("ai_extracted_doc_type")
+  aiExtractedExpiration    DateTime?                @map("ai_extracted_expiration")
+  aiConfidence             Decimal?                 @map("ai_confidence") @db.Decimal(5, 4)
+  aiExtractedClinicianName String?                  @map("ai_extracted_clinician_name")
+  aiRawResponse            Json?                    @map("ai_raw_response")
+
+  // Admin-matched fields (set during review)
+  matchedClinicianId       String?                  @map("matched_clinician_id")
+  matchedItemDefinitionId  String?                  @map("matched_item_definition_id")
+  matchedChecklistItemId   String?                  @map("matched_checklist_item_id")
+  confirmedExpiration      DateTime?                @map("confirmed_expiration")
+  confirmedDocType         String?                  @map("confirmed_doc_type")
+
+  errorMessage             String?                  @map("error_message")
+  createdAt                DateTime                 @default(now()) @map("created_at")
+  updatedAt                DateTime                 @updatedAt @map("updated_at")
+
+  bulkUploadJob            BulkUploadJob            @relation(fields: [bulkUploadJobId], references: [id], onDelete: Cascade)
+
+  @@index([bulkUploadJobId])
+  @@index([organizationId, status])
+  @@map("bulk_upload_documents")
 }
 
 // ─── Access Requests ───────────────────────────────────

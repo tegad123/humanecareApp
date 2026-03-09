@@ -14,6 +14,7 @@ import {
   Settings,
   Menu,
   X,
+  Upload,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { TourTriggerButton } from '@/components/tour/tour-trigger-button';
@@ -47,6 +48,12 @@ const navItems = [
     label: 'Documents',
     icon: FolderOpen,
     roles: ['super_admin', 'admin'],
+  },
+  {
+    href: '/dashboard/bulk-upload',
+    label: 'Bulk Upload',
+    icon: Upload,
+    roles: ['super_admin', 'admin', 'compliance'],
   },
   {
     href: '/dashboard/email-settings',
